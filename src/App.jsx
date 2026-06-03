@@ -274,8 +274,8 @@ export default function App() {
           <div className="ig-section">
             <div className="ig-creds">
               <input
-                className="ig-input" type="text" inputMode="numeric"
-                placeholder="Member ID" value={memberId}
+                className="ig-input" type="text" inputMode="email"
+                placeholder="Member ID or email" value={memberId}
                 onChange={e => setMemberId(e.target.value)}
               />
               <input
