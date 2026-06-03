@@ -252,7 +252,7 @@ export default function App() {
       )}
       {voiceState === 'listening' && (
         <div className="voice-banner listening">
-          {voiceHeard ? `"${voiceHeard}"` : '🎤 Say "I scored 4 on hole 7"'}
+          {voiceHeard ? `"${voiceHeard}"` : '🎤 Listening…'}
         </div>
       )}
 
