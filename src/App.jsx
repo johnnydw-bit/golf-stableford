@@ -31,7 +31,7 @@ function normalise(transcript) {
 function parseVoice(transcript) {
   const t = normalise(transcript)
   // Grab first number as score, last number as hole — ignore whatever words are in between
-  const m = t.match(/scor\w+\s+(\d+)\b.*?\b(\d+)\s*$/)
+  const m = t.match(/\bscor\w+\s+(\d+)\b.*?\b(\d+)\s*$/)
   if (!m) return null
   const score = parseInt(m[1])
   const hole  = parseInt(m[2])
