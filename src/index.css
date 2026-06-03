@@ -212,6 +212,29 @@ html, body, #root {
   border-radius: 0.4rem; padding: 0 0.5rem;
 }
 
+/* ── Finished screen ── */
+.finished {
+  height: 100dvh; display: flex; align-items: center; justify-content: center;
+  background: var(--green-800); padding: 2rem;
+}
+.finished-card {
+  background: white; border-radius: 1rem; padding: 2rem 1.5rem;
+  width: 100%; max-width: 320px; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 0.6rem;
+}
+.finished-title { font-size: 1rem; font-weight: 700; color: var(--gray-600); text-transform: uppercase; letter-spacing: 0.08em; }
+.finished-total { font-size: 5rem; font-weight: 900; color: var(--green-800); line-height: 1; }
+.finished-label { font-size: 0.85rem; color: var(--gray-400); margin-top: -0.25rem; }
+.finished-sub { display: flex; gap: 2rem; font-size: 1rem; color: var(--gray-600); margin-top: 0.5rem; }
+.finished-sub strong { font-size: 1.2rem; font-weight: 800; color: var(--gray-900); }
+.finished-meta { font-size: 0.8rem; color: var(--gray-400); margin-top: 0.25rem; }
+.start-btn {
+  margin-top: 1rem; width: 100%; padding: 0.9rem;
+  background: var(--green-800); color: white;
+  border: none; border-radius: 0.6rem;
+  font-size: 1rem; font-weight: 700; cursor: pointer;
+}
+
 /* ── Popup ── */
 .overlay {
   position: fixed; inset: 0;

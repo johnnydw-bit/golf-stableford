@@ -43,6 +43,7 @@ export default function App() {
   const [index, setIndex] = useState(saved?.index ?? '')
   const [tee, setTee] = useState(saved?.tee ?? 'yellow')
   const [scores, setScores] = useState(saved?.scores ?? Array(18).fill(null))
+  const [finished, setFinished] = useState(null) // { totalPts, outPts, inPts } when round ended
   const [popup, setPopup] = useState(null)
   const [voiceState, setVoiceState] = useState('off') // 'off' | 'listening' | 'confirm' | 'error'
   const [voiceMsg, setVoiceMsg] = useState('')
@@ -186,10 +187,14 @@ export default function App() {
   const handleExit = () => {
     stopListening()
     wakeLockRef.current?.release()
+    setFinished({ totalPts, outPts, inPts, index, tee })
+  }
+
+  const handleNewRound = () => {
     localStorage.removeItem(STORAGE_KEY)
     setScores(Array(18).fill(null))
-    setIndex('')
-    setTee('yellow')
+    setFinished(null)
+    startListening()
   }
 
   useEffect(() => {
@@ -210,6 +215,22 @@ export default function App() {
   const inPts    = sumPts(holeData.slice(9))
 
   const popupHole = popup !== null ? holeData[popup] : null
+
+  if (finished) return (
+    <div className="finished">
+      <div className="finished-card">
+        <div className="finished-title">Round Complete</div>
+        <div className="finished-total">{finished.totalPts}</div>
+        <div className="finished-label">Stableford Points</div>
+        <div className="finished-sub">
+          <span>OUT <strong>{finished.outPts}</strong></span>
+          <span>IN <strong>{finished.inPts}</strong></span>
+        </div>
+        <div className="finished-meta">{tees[finished.tee].label} tees · Index {finished.index}</div>
+        <button className="start-btn" onClick={handleNewRound}>New Round</button>
+      </div>
+    </div>
+  )
 
   return (
     <div className="app">
