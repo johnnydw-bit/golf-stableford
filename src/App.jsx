@@ -30,7 +30,8 @@ function normalise(transcript) {
 // Parse "I scored [score] on [hole]" or "I scored [score] on hole [hole]"
 function parseVoice(transcript) {
   const t = normalise(transcript)
-  const m = t.match(/scor\w*\s+(\d+)\s+on\s+(?:(?:hole|whole|hold)\s+)?(\d+)/)
+  // Grab first number as score, last number as hole — ignore whatever words are in between
+  const m = t.match(/scor\w+\s+(\d+)\b.*?\b(\d+)\s*$/)
   if (!m) return null
   const score = parseInt(m[1])
   const hole  = parseInt(m[2])
