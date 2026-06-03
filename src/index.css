@@ -44,13 +44,11 @@ html, body, #root {
 .header-left { display: flex; align-items: center; gap: 0.5rem; flex: 1; }
 .header-right { display: flex; align-items: center; gap: 0.4rem; }
 
-.index-field { display: flex; flex-direction: column; gap: 1px; }
-.index-field label { font-size: 0.55rem; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.05em; }
 .index-field input {
-  width: 60px;
-  font-size: 0.95rem;
+  width: 52px;
+  font-size: 0.9rem;
   font-weight: 700;
-  padding: 0.2rem 0.35rem;
+  padding: 0.3rem 0.35rem;
   border: 1.5px solid rgba(255,255,255,0.35);
   border-radius: 0.3rem;
   background: rgba(255,255,255,0.15);
@@ -58,7 +56,7 @@ html, body, #root {
   outline: none;
   appearance: textfield;
 }
-.index-field input::placeholder { color: rgba(255,255,255,0.45); }
+.index-field input::placeholder { color: rgba(255,255,255,0.55); font-weight: 400; font-size: 0.8rem; }
 .index-field input:focus { border-color: white; }
 .index-field input::-webkit-inner-spin-button { display: none; }
 
@@ -201,10 +199,18 @@ html, body, #root {
 .sub-bar {
   background: var(--green-800); color: white;
   display: flex; justify-content: space-between; align-items: center;
-  padding: 0.4rem 1rem; font-size: 0.8rem; flex-shrink: 0;
+  padding: 0.5rem 1.25rem; font-size: 0.8rem; flex-shrink: 0;
 }
 .sub-bar strong { font-size: 1rem; margin-left: 0.25rem; }
-.total-pts { font-size: 0.85rem; }
+.total-pts {
+  display: flex; flex-direction: column; align-items: center; gap: 0;
+}
+.total-pts .total-label { font-size: 0.6rem; opacity: 0.7; text-transform: uppercase; letter-spacing: 0.05em; }
+.total-pts .total-num {
+  font-size: 2.2rem; font-weight: 900; line-height: 1;
+  background: white; color: var(--green-800);
+  border-radius: 0.4rem; padding: 0 0.5rem;
+}
 
 /* ── Popup ── */
 .overlay {

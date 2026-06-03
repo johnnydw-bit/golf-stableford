@@ -217,10 +217,9 @@ export default function App() {
       <div className="header">
         <div className="header-left">
           <div className="index-field">
-            <label>Index</label>
             <input
               type="number" inputMode="decimal" step="0.1" min="0" max="54"
-              placeholder="0.0" value={index}
+              placeholder="Index" value={index}
               onChange={e => { setIndex(e.target.value); persist(e.target.value, tee, scores) }}
             />
           </div>
@@ -235,10 +234,6 @@ export default function App() {
           {playingHcp !== null && <span className="hcp-pill">CH {playingHcp}</span>}
         </div>
         <div className="header-right">
-          <div className="total-box">
-            <span className="total-label">PTS</span>
-            <span className="total-val">{totalPts}</span>
-          </div>
           <button
             className={`mic-indicator ${voiceState}`}
             onClick={toggleVoice}
@@ -246,7 +241,7 @@ export default function App() {
           >
             <span className="mic-dot" />
           </button>
-          <button className="icon-btn reset-btn" onClick={resetScores} title="Reset scores">↩</button>
+          <button className="icon-btn" onClick={resetScores} title="Reset scores">↩</button>
           <button className="exit-btn" onClick={handleExit} title="End round">Exit</button>
         </div>
       </div>
@@ -288,7 +283,10 @@ export default function App() {
       {/* ── Subtotals bar ── */}
       <div className="sub-bar">
         <span>OUT <strong>{outPts}</strong></span>
-        <span className="total-pts">TOTAL <strong>{totalPts}</strong></span>
+        <div className="total-pts">
+          <span className="total-label">Total</span>
+          <span className="total-num">{totalPts}</span>
+        </div>
         <span>IN <strong>{inPts}</strong></span>
       </div>
 
