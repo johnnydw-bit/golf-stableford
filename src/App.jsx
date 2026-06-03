@@ -39,11 +39,17 @@ function parseVoice(transcript) {
   return { score, hole }
 }
 
+const CRED_KEY = 'ig_credentials'
+function loadCreds() { try { return JSON.parse(localStorage.getItem(CRED_KEY)) ?? {} } catch { return {} } }
+
 export default function App() {
   const [index, setIndex] = useState(saved?.index ?? '')
   const [tee, setTee] = useState(saved?.tee ?? 'yellow')
   const [scores, setScores] = useState(saved?.scores ?? Array(18).fill(null))
   const [finished, setFinished] = useState(null) // { totalPts, outPts, inPts } when round ended
+  const savedCreds = loadCreds()
+  const [memberId, setMemberId] = useState(savedCreds.memberId ?? '')
+  const [pin, setPin]           = useState(savedCreds.pin ?? '')
   const [popup, setPopup] = useState(null)
   const [voiceState, setVoiceState] = useState('off') // 'off' | 'listening' | 'confirm' | 'error'
   const [voiceMsg, setVoiceMsg] = useState('')
@@ -183,11 +189,48 @@ export default function App() {
     }
   }, [])
 
-  // Exit — stop mic, release wake lock, clear session
+  const [igStatus, setIgStatus] = useState('idle') // 'idle' | 'posting' | 'ok' | 'error'
+  const [igError, setIgError]   = useState('')
+
+  const handlePostToIG = async () => {
+    const d = new Date()
+    const dd = String(d.getDate()).padStart(2, '0')
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const yy = String(d.getFullYear()).slice(-2)
+
+    setIgStatus('posting')
+    setIgError('')
+    try {
+      localStorage.setItem(CRED_KEY, JSON.stringify({ memberId, pin }))
+      const res = await fetch('/api/post-score', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          memberId, pin,
+          tees: tee === 'white' ? 1 : 2,
+          date: `${dd}-${mm}-${yy}`,
+          hcap: playingHcp ?? 0,
+          scores,
+        }),
+      })
+      const data = await res.json()
+      if (data.ok) {
+        setIgStatus('ok')
+      } else {
+        setIgStatus('error')
+        setIgError(data.error ?? 'Unknown error')
+      }
+    } catch (err) {
+      setIgStatus('error')
+      setIgError(err.message)
+    }
+  }
+
+  // Exit — stop mic, release wake lock, show summary
   const handleExit = () => {
     stopListening()
     wakeLockRef.current?.release()
-    window.close()
+    setFinished({ totalPts, outPts, inPts, tee, index })
   }
 
   const handleNewRound = () => {
@@ -227,6 +270,33 @@ export default function App() {
           <span>IN <strong>{finished.inPts}</strong></span>
         </div>
         <div className="finished-meta">{tees[finished.tee].label} tees · Index {finished.index}</div>
+        {playingHcp !== null && (
+          <div className="ig-section">
+            <div className="ig-creds">
+              <input
+                className="ig-input" type="text" inputMode="numeric"
+                placeholder="Member ID" value={memberId}
+                onChange={e => setMemberId(e.target.value)}
+              />
+              <input
+                className="ig-input" type="password"
+                placeholder="PIN" value={pin}
+                onChange={e => setPin(e.target.value)}
+              />
+            </div>
+            {igStatus !== 'ok' && (
+              <button
+                className="ig-btn"
+                onClick={handlePostToIG}
+                disabled={igStatus === 'posting' || !memberId || !pin}
+              >
+                {igStatus === 'posting' ? 'Posting…' : 'Post to Intelligent Golf'}
+              </button>
+            )}
+            {igStatus === 'ok'    && <div className="ig-ok">Score posted to Intelligent Golf</div>}
+            {igStatus === 'error' && <div className="ig-err">{igError}</div>}
+          </div>
+        )}
         <button className="start-btn" onClick={handleNewRound}>New Round</button>
       </div>
     </div>

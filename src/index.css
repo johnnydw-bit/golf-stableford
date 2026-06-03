@@ -236,8 +236,26 @@ html, body, #root {
 .finished-sub { display: flex; gap: 2rem; font-size: 1rem; color: var(--gray-600); margin-top: 0.5rem; }
 .finished-sub strong { font-size: 1.2rem; font-weight: 800; color: var(--gray-900); }
 .finished-meta { font-size: 0.8rem; color: var(--gray-400); margin-top: 0.25rem; }
+.ig-section { width: 100%; display: flex; flex-direction: column; gap: 0.5rem; }
+.ig-creds { display: flex; gap: 0.5rem; }
+.ig-input {
+  flex: 1; padding: 0.65rem 0.5rem;
+  border: 1.5px solid var(--gray-200); border-radius: 0.5rem;
+  font-size: 0.95rem; color: var(--gray-900); outline: none;
+  min-width: 0;
+}
+.ig-input:focus { border-color: #1d4ed8; }
+.ig-btn {
+  width: 100%; padding: 0.9rem;
+  background: #1d4ed8; color: white;
+  border: none; border-radius: 0.6rem;
+  font-size: 1rem; font-weight: 700; cursor: pointer;
+}
+.ig-btn:disabled { opacity: 0.6; cursor: default; }
+.ig-ok  { width: 100%; padding: 0.75rem; background: #dcfce7; color: #166534; border-radius: 0.6rem; font-size: 0.9rem; font-weight: 700; text-align: center; }
+.ig-err { width: 100%; padding: 0.75rem; background: #fee2e2; color: #dc2626; border-radius: 0.6rem; font-size: 0.85rem; font-weight: 600; text-align: center; }
 .start-btn {
-  margin-top: 1rem; width: 100%; padding: 0.9rem;
+  width: 100%; padding: 0.9rem;
   background: var(--green-800); color: white;
   border: none; border-radius: 0.6rem;
   font-size: 1rem; font-weight: 700; cursor: pointer;
