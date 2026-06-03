@@ -8,7 +8,7 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       devOptions: { enabled: false },
-      includeAssets: ['golf-icon.svg'],
+      includeAssets: ['icon-192.png', 'icon-512.png'],
       manifest: {
         name: 'Golf Stableford',
         short_name: 'Golf',
