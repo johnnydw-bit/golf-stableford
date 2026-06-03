@@ -16,22 +16,26 @@ function wordToNum(str) {
   return WORD_NUMS[str.toLowerCase()] ?? null
 }
 
+// Normalise word-numbers to digits, longest words first to avoid partial matches
+const WORD_NUMS_SORTED = Object.entries(WORD_NUMS)
+  .sort((a, b) => b[0].length - a[0].length)
+
+function normalise(transcript) {
+  let t = transcript.toLowerCase().trim()
+  for (const [word, val] of WORD_NUMS_SORTED) {
+    t = t.replace(new RegExp(`\\b${word}\\b`, 'g'), String(val))
+  }
+  return t
+}
+
 // Parse "I scored [score] on [hole]" or "I scored [score] on hole [hole]"
-// Returns { score, hole } (hole is 1-based) or null
 function parseVoice(transcript) {
-  const t = transcript.toLowerCase().trim()
-  // Match digits or words for score and hole
-  const numPat = '(\\d+|' + Object.keys(WORD_NUMS).join('|') + ')'
-  const re = new RegExp(
-    `scored\\s+${numPat}\\s+on\\s+(?:hole\\s+)?${numPat}`, 'i'
-  )
-  const m = t.match(re)
+  const t = normalise(transcript)
+  const m = t.match(/scored\s+(\d+)\s+on\s+(?:hole\s+)?(\d+)/)
   if (!m) return null
-  const score = wordToNum(m[1])
-  const hole  = wordToNum(m[2])
-  if (score === null || hole === null) return null
-  if (hole < 1 || hole > 18) return null
-  if (score < 1 || score > 15) return null
+  const score = parseInt(m[1])
+  const hole  = parseInt(m[2])
+  if (hole < 1 || hole > 18 || score < 1 || score > 15) return null
   return { score, hole }
 }
 
@@ -42,6 +46,7 @@ export default function App() {
   const [popup, setPopup] = useState(null)
   const [voiceState, setVoiceState] = useState('off') // 'off' | 'listening' | 'confirm' | 'error'
   const [voiceMsg, setVoiceMsg] = useState('')
+  const [voiceHeard, setVoiceHeard] = useState('')
   const recognitionRef = useRef(null)
   const restartTimerRef = useRef(null)
   const scoresRef = useRef(scores)
@@ -104,16 +109,20 @@ export default function App() {
     rec.onstart = () => setVoiceState('listening')
 
     rec.onresult = (e) => {
-      // Check all results for a match — prefer final, also check interim
       for (let i = e.resultIndex; i < e.results.length; i++) {
-        const alts = Array.from(e.results[i])
-        for (const alt of alts) {
-          const parsed = parseVoice(alt.transcript)
+        const best = e.results[i][0].transcript
+        // Show live transcript so user can see mic is working
+        setVoiceHeard(best)
+
+        // Try all alternatives for a score match
+        for (let j = 0; j < e.results[i].length; j++) {
+          const parsed = parseVoice(e.results[i][j].transcript)
           if (parsed) {
             setScore(parsed.hole - 1, parsed.score)
             setVoiceState('confirm')
             setVoiceMsg(`✓ Hole ${parsed.hole} — scored ${parsed.score}`)
-            setTimeout(() => setVoiceState('listening'), 2000)
+            setVoiceHeard('')
+            setTimeout(() => { setVoiceState('listening'); setVoiceHeard('') }, 2000)
             return
           }
         }
@@ -216,7 +225,9 @@ export default function App() {
         <div className="voice-banner confirm">{voiceMsg}</div>
       )}
       {voiceState === 'listening' && (
-        <div className="voice-banner listening">🎤 Listening… say "I scored 4 on hole 7"</div>
+        <div className="voice-banner listening">
+          {voiceHeard ? `"${voiceHeard}"` : '🎤 Say "I scored 4 on hole 7"'}
+        </div>
       )}
 
       {/* ── Scorecard grid ── */}
