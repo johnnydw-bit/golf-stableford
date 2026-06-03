@@ -224,7 +224,6 @@ export default function App() {
         {holeData.map((h, i) => {
           const pts = h.pts
           const ptsClass = pts === null ? 'empty' : pts >= 4 ? 'p4' : pts === 3 ? 'p3' : pts === 2 ? 'p2' : pts === 1 ? 'p1' : 'p0'
-          const isListening = listening === i
           return (
             <div key={h.hole} className={`hole-row ${i === 8 ? 'after-nine' : ''}`}>
               <button className="hole-num" onClick={() => setPopup(i)}>
