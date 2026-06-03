@@ -3,10 +3,23 @@ import * as cheerio from 'cheerio'
 
 const BASE = 'https://www.bramleygolfclub.co.uk'
 
-function parseCookies(headers) {
-  const raw = headers['set-cookie'] || []
-  return raw.map(c => c.split(';')[0]).join('; ')
+const cookieJar = {}
+
+function setCookies(header) {
+  if (!header) return
+  const headers = Array.isArray(header) ? header : [header]
+  for (const cookie of headers) {
+    const [kv] = cookie.split(';')
+    const eqIdx = kv.indexOf('=')
+    if (eqIdx > 0) cookieJar[kv.slice(0, eqIdx).trim()] = kv.slice(eqIdx + 1).trim()
+  }
 }
+
+function getCookieHeader() {
+  return Object.entries(cookieJar).map(([k, v]) => `${k}=${v}`).join('; ')
+}
+
+const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36'
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end()
@@ -18,41 +31,48 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1. Fetch login page to get CSRF token
+    // 1. GET login page — grab CSRF token and initial cookies
     const loginPage = await axios.get(`${BASE}/login.php`, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36' },
+      headers: { 'User-Agent': ua },
+      validateStatus: s => s < 500,
       timeout: 8000,
     })
+    setCookies(loginPage.headers['set-cookie'])
+
     const $ = cheerio.load(loginPage.data)
     const csrf = $('input[name="_csrf_token"]').val()
-    let cookie = parseCookies(loginPage.headers)
+      || (loginPage.data.match(/name="_csrf_token"\s+value="([^"]+)"/) || [])[1]
 
-    // 2. POST login
+    // 2. POST credentials — don't follow redirect, capture cookies
     const loginParams = new URLSearchParams({
       task: 'login', topmenu: '1',
       memberid: memberId, pin,
-      cachemid: '1', _csrf_token: csrf, Submit: 'Login',
+      cachemid: '1', _csrf_token: csrf ?? '', Submit: 'Login',
     })
     const loginRes = await axios.post(`${BASE}/login.php`, loginParams.toString(), {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36',
-        Cookie: cookie,
+        'User-Agent': ua,
+        Cookie: getCookieHeader(),
       },
-      maxRedirects: 5,
+      maxRedirects: 0,
+      validateStatus: s => s < 400 || s === 302,
       timeout: 8000,
     })
-    cookie = parseCookies(loginRes.headers) || cookie
+    setCookies(loginRes.headers['set-cookie'])
 
-    if (loginRes.data.includes('memberid') && loginRes.data.includes('pin')) {
-      return res.status(401).json({ error: 'Login failed — check credentials' })
+    // Check for failed login (redirected back to login page or body still shows login form)
+    if (loginRes.data && loginRes.data.includes('memberid') && loginRes.data.includes('pin')) {
+      return res.status(401).json({ error: 'Invalid Member ID or PIN' })
     }
 
-    // 3. Accept consent (some sessions require this)
-    await axios.get(`${BASE}/ttbconsent.php?action=accept`, {
-      headers: { Cookie: cookie },
+    // 3. Accept consent
+    const consentRes = await axios.get(`${BASE}/ttbconsent.php?action=accept`, {
+      headers: { 'User-Agent': ua, Cookie: getCookieHeader() },
+      validateStatus: s => s < 500,
       timeout: 8000,
-    }).catch(() => {})
+    })
+    setCookies(consentRes.headers['set-cookie'])
 
     // 4. POST score to editround.php
     const scoreParams = new URLSearchParams({
@@ -67,16 +87,15 @@ export default async function handler(req, res) {
     const scoreRes = await axios.post(`${BASE}/editround.php`, scoreParams.toString(), {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36',
-        Cookie: cookie,
+        'User-Agent': ua,
+        Cookie: getCookieHeader(),
       },
-      maxRedirects: 5,
+      validateStatus: s => s < 500,
       timeout: 10000,
     })
 
-    // Check for error indicators in response
-    if (scoreRes.data.includes('login.php') || scoreRes.data.includes('INVALID')) {
-      return res.status(401).json({ error: 'Session expired — login failed' })
+    if (scoreRes.data.includes('login.php')) {
+      return res.status(401).json({ error: 'Session lost — score not saved' })
     }
 
     res.status(200).json({ ok: true })
