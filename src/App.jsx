@@ -294,6 +294,7 @@ export default function App() {
               </button>
             )}
             {igStatus === 'ok'    && <div className="ig-ok">Score posted to Intelligent Golf</div>}
+            {igStatus === 'ok'    && <div className="ig-note">Personal record only — use the IG app for an attested handicap round</div>}
             {igStatus === 'error' && <div className="ig-err">{igError}</div>}
           </div>
         )}
