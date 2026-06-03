@@ -6,14 +6,13 @@ function loadSaved() { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)
 const saved = loadSaved()
 
 const WORD_NUMS = {
+  // Standard words
   one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9,
   ten:10, eleven:11, twelve:12, thirteen:13, fourteen:14, fifteen:15,
-  sixteen:16, seventeen:17, eighteen:18
-}
-function wordToNum(str) {
-  const n = parseInt(str)
-  if (!isNaN(n)) return n
-  return WORD_NUMS[str.toLowerCase()] ?? null
+  sixteen:16, seventeen:17, eighteen:18,
+  // Common speech-recognition mishearings
+  won:1, 'to':2, too:2, 'free':3, fore:4, 'for':4, foreign:4,
+  'sex':6, sick:6, ate:8, niner:9,
 }
 
 // Normalise word-numbers to digits, longest words first to avoid partial matches
