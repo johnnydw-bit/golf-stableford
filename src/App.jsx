@@ -187,7 +187,7 @@ export default function App() {
   const handleExit = () => {
     stopListening()
     wakeLockRef.current?.release()
-    setFinished({ totalPts, outPts, inPts, index, tee })
+    window.close()
   }
 
   const handleNewRound = () => {
