@@ -285,7 +285,7 @@ export default function App() {
           return (
             <div key={h.hole} className={`hole-row ${i === 8 ? 'after-nine' : ''}`}>
               <button className="hole-num" onClick={() => setPopup(i)}>
-                {h.hole}
+                <span className="hole-num-digit">{h.hole}</span>
                 {h.shots > 0 && <span className="dot-row">{Array.from({length:h.shots}).map((_,k)=><span key={k} className="dot"/>)}</span>}
               </button>
               <div className="stepper">

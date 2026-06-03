@@ -143,11 +143,11 @@ html, body, #root {
 /* hole number button */
 .hole-num {
   background: none; border: none; cursor: pointer;
-  font-size: 0.9rem; font-weight: 800; color: var(--green-800);
-  display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+  display: flex; flex-direction: row; align-items: center; gap: 3px;
   padding: 0; text-align: left;
 }
-.dot-row { display: flex; gap: 2px; }
+.hole-num-digit { font-size: 1.2rem; font-weight: 900; color: var(--green-800); line-height: 1; }
+.dot-row { display: flex; flex-direction: column; gap: 2px; }
 .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--amber); display: block; }
 
 /* stepper */
