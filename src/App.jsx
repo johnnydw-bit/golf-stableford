@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { holes, tees, courseHandicap, shotsOnHole, stablefordPoints } from './courseData.js'
 
 const STORAGE_KEY = 'golf_round'
@@ -40,12 +40,21 @@ export default function App() {
   const [tee, setTee] = useState(saved?.tee ?? 'yellow')
   const [scores, setScores] = useState(saved?.scores ?? Array(18).fill(null))
   const [popup, setPopup] = useState(null)
-  const [listening, setListening] = useState(false)
-  const [voiceHint, setVoiceHint] = useState('')
+  const [voiceState, setVoiceState] = useState('off') // 'off' | 'listening' | 'confirm' | 'error'
+  const [voiceMsg, setVoiceMsg] = useState('')
   const recognitionRef = useRef(null)
+  const restartTimerRef = useRef(null)
+  const scoresRef = useRef(scores)
+  const indexRef = useRef(index)
+  const teeRef = useRef(tee)
 
   const persist = (i, t, s) =>
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ index: i, tee: t, scores: s }))
+
+  // Keep refs in sync so recognition callbacks always see latest state
+  useEffect(() => { scoresRef.current = scores }, [scores])
+  useEffect(() => { indexRef.current = index }, [index])
+  useEffect(() => { teeRef.current = tee }, [tee])
 
   const playingHcp = index !== '' && !isNaN(Number(index))
     ? courseHandicap(Number(index), tee) : null
@@ -76,50 +85,79 @@ export default function App() {
     persist(index, tee, fresh)
   }
 
-  // Global voice input — say "I scored 4 on 7" or "I scored 4 on hole 7"
-  const startVoice = () => {
+  // Always-on continuous recognition — triggers on "I scored X on hole Y"
+  const startListening = useCallback(() => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SR) { alert('Voice input not supported on this browser. Try Chrome.'); return }
-    if (recognitionRef.current) recognitionRef.current.abort()
+    if (!SR) return
+
+    if (recognitionRef.current) {
+      try { recognitionRef.current.abort() } catch {}
+    }
 
     const rec = new SR()
     rec.lang = 'en-GB'
-    rec.interimResults = false
-    rec.maxAlternatives = 5
+    rec.continuous = true
+    rec.interimResults = true
+    rec.maxAlternatives = 3
     recognitionRef.current = rec
 
-    setListening(true)
-    setVoiceHint('Say "I scored 4 on hole 7"…')
+    rec.onstart = () => setVoiceState('listening')
 
     rec.onresult = (e) => {
-      const transcripts = Array.from(e.results[0]).map(r => r.transcript)
-      let result = null
-      for (const t of transcripts) {
-        result = parseVoice(t)
-        if (result) break
-      }
-      if (result) {
-        setScore(result.hole - 1, result.score)
-        setVoiceHint(`✓ Hole ${result.hole} — ${result.score}`)
-        setTimeout(() => { setListening(false); setVoiceHint('') }, 1200)
-      } else {
-        setVoiceHint('Try again: "I scored 4 on hole 7"')
-        setTimeout(() => { setListening(false); setVoiceHint('') }, 2000)
+      // Check all results for a match — prefer final, also check interim
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const alts = Array.from(e.results[i])
+        for (const alt of alts) {
+          const parsed = parseVoice(alt.transcript)
+          if (parsed) {
+            setScore(parsed.hole - 1, parsed.score)
+            setVoiceState('confirm')
+            setVoiceMsg(`✓ Hole ${parsed.hole} — scored ${parsed.score}`)
+            setTimeout(() => setVoiceState('listening'), 2000)
+            return
+          }
+        }
       }
     }
-    rec.onerror = () => {
-      setVoiceHint('Error — tap mic to retry')
-      setTimeout(() => { setListening(false); setVoiceHint('') }, 1500)
+
+    rec.onerror = (e) => {
+      if (e.error === 'no-speech') return // silent timeout, just restart
+      if (e.error === 'not-allowed') {
+        setVoiceState('off')
+        setVoiceMsg('Mic permission denied')
+        return
+      }
     }
-    rec.onend = () => setListening(false)
-    rec.start()
+
+    // Auto-restart when it stops (browsers cut off after ~60s silence)
+    rec.onend = () => {
+      if (recognitionRef.current === rec) {
+        restartTimerRef.current = setTimeout(startListening, 300)
+      }
+    }
+
+    try { rec.start() } catch {}
+  }, [])
+
+  const stopListening = () => {
+    clearTimeout(restartTimerRef.current)
+    const rec = recognitionRef.current
+    recognitionRef.current = null
+    try { rec?.abort() } catch {}
+    setVoiceState('off')
+    setVoiceMsg('')
   }
 
-  const stopVoice = () => {
-    recognitionRef.current?.abort()
-    setListening(false)
-    setVoiceHint('')
+  const toggleVoice = () => {
+    if (voiceState === 'off') startListening()
+    else stopListening()
   }
+
+  useEffect(() => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (SR) startListening()
+    return () => stopListening()
+  }, [])
 
   const holeData = holes.map((h, i) => {
     const shots = playingHcp !== null ? shotsOnHole(playingHcp, h.si) : 0
@@ -163,21 +201,22 @@ export default function App() {
             <span className="total-val">{totalPts}</span>
           </div>
           <button
-            className={`mic-btn ${listening ? 'active' : ''}`}
-            onClick={listening ? stopVoice : startVoice}
-            title='Say "I scored 4 on hole 7"'
-          >🎤</button>
+            className={`mic-indicator ${voiceState}`}
+            onClick={toggleVoice}
+            title={voiceState === 'off' ? 'Tap to enable voice' : 'Tap to disable voice'}
+          >
+            <span className="mic-dot" />
+          </button>
           <button className="icon-btn" onClick={resetScores} title="Reset scores">↩</button>
         </div>
       </div>
 
-      {/* ── Voice banner ── */}
-      {listening && (
-        <div className="voice-banner" onClick={stopVoice}>
-          <span className="mic-pulse">🎤</span>
-          <span>{voiceHint}</span>
-          <span className="voice-cancel">✕</span>
-        </div>
+      {/* ── Voice status banner ── */}
+      {voiceState === 'confirm' && (
+        <div className="voice-banner confirm">{voiceMsg}</div>
+      )}
+      {voiceState === 'listening' && (
+        <div className="voice-banner listening">🎤 Listening… say "I scored 4 on hole 7"</div>
       )}
 
       {/* ── Scorecard grid ── */}
