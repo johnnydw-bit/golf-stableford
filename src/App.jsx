@@ -155,11 +155,41 @@ export default function App() {
     try { rec?.abort() } catch {}
     setVoiceState('off')
     setVoiceMsg('')
+    setVoiceHeard('')
   }
 
   const toggleVoice = () => {
     if (voiceState === 'off') startListening()
     else stopListening()
+  }
+
+  // Wake lock — keep screen on while app is open
+  const wakeLockRef = useRef(null)
+  useEffect(() => {
+    const acquire = async () => {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLockRef.current = await navigator.wakeLock.request('screen')
+        }
+      } catch {}
+    }
+    acquire()
+    const reacquire = () => { if (document.visibilityState === 'visible') acquire() }
+    document.addEventListener('visibilitychange', reacquire)
+    return () => {
+      document.removeEventListener('visibilitychange', reacquire)
+      wakeLockRef.current?.release()
+    }
+  }, [])
+
+  // Exit — stop mic, release wake lock, clear session
+  const handleExit = () => {
+    stopListening()
+    wakeLockRef.current?.release()
+    localStorage.removeItem(STORAGE_KEY)
+    setScores(Array(18).fill(null))
+    setIndex('')
+    setTee('yellow')
   }
 
   useEffect(() => {
@@ -216,7 +246,8 @@ export default function App() {
           >
             <span className="mic-dot" />
           </button>
-          <button className="icon-btn" onClick={resetScores} title="Reset scores">↩</button>
+          <button className="icon-btn reset-btn" onClick={resetScores} title="Reset scores">↩</button>
+          <button className="exit-btn" onClick={handleExit} title="End round">Exit</button>
         </div>
       </div>
 
