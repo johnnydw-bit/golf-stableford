@@ -3,20 +3,22 @@ import * as cheerio from 'cheerio'
 
 const BASE = 'https://www.bramleygolfclub.co.uk'
 
-const cookieJar = {}
-
-function setCookies(header) {
-  if (!header) return
-  const headers = Array.isArray(header) ? header : [header]
-  for (const cookie of headers) {
-    const [kv] = cookie.split(';')
-    const eqIdx = kv.indexOf('=')
-    if (eqIdx > 0) cookieJar[kv.slice(0, eqIdx).trim()] = kv.slice(eqIdx + 1).trim()
+function makeCookieJar() {
+  const jar = {}
+  return {
+    set(header) {
+      if (!header) return
+      const headers = Array.isArray(header) ? header : [header]
+      for (const cookie of headers) {
+        const [kv] = cookie.split(';')
+        const eqIdx = kv.indexOf('=')
+        if (eqIdx > 0) jar[kv.slice(0, eqIdx).trim()] = kv.slice(eqIdx + 1).trim()
+      }
+    },
+    get() {
+      return Object.entries(jar).map(([k, v]) => `${k}=${v}`).join('; ')
+    },
   }
-}
-
-function getCookieHeader() {
-  return Object.entries(cookieJar).map(([k, v]) => `${k}=${v}`).join('; ')
 }
 
 const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36'
@@ -30,6 +32,8 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Member ID and PIN are required' })
   }
 
+  const cookies = makeCookieJar()
+
   try {
     // 1. GET login page — grab CSRF token and initial cookies
     const loginPage = await axios.get(`${BASE}/login.php`, {
@@ -37,7 +41,7 @@ export default async function handler(req, res) {
       validateStatus: s => s < 500,
       timeout: 8000,
     })
-    setCookies(loginPage.headers['set-cookie'])
+    cookies.set(loginPage.headers['set-cookie'])
 
     const $ = cheerio.load(loginPage.data)
     const csrf = $('input[name="_csrf_token"]').val()
@@ -53,26 +57,25 @@ export default async function handler(req, res) {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'User-Agent': ua,
-        Cookie: getCookieHeader(),
+        Cookie: cookies.get(),
       },
       maxRedirects: 0,
       validateStatus: s => s < 400 || s === 302,
       timeout: 8000,
     })
-    setCookies(loginRes.headers['set-cookie'])
+    cookies.set(loginRes.headers['set-cookie'])
 
-    // Check for failed login (redirected back to login page or body still shows login form)
     if (loginRes.data && loginRes.data.includes('memberid') && loginRes.data.includes('pin')) {
       return res.status(401).json({ error: 'Invalid Member ID or PIN' })
     }
 
     // 3. Accept consent
     const consentRes = await axios.get(`${BASE}/ttbconsent.php?action=accept`, {
-      headers: { 'User-Agent': ua, Cookie: getCookieHeader() },
+      headers: { 'User-Agent': ua, Cookie: cookies.get() },
       validateStatus: s => s < 500,
       timeout: 8000,
     })
-    setCookies(consentRes.headers['set-cookie'])
+    cookies.set(consentRes.headers['set-cookie'])
 
     // 4. POST score to editround.php
     const scoreParams = new URLSearchParams({
@@ -88,7 +91,7 @@ export default async function handler(req, res) {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'User-Agent': ua,
-        Cookie: getCookieHeader(),
+        Cookie: cookies.get(),
       },
       validateStatus: s => s < 500,
       timeout: 10000,
