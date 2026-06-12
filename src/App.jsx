@@ -44,18 +44,14 @@ export default function App() {
   const [pin, setPin] = useState(savedCreds.pin ?? '')
   const [popup, setPopup] = useState(null)
   const [currentHole, setCurrentHole] = useState(0)
-
-  // Voice state: 'idle' | 'recording' | 'processing' | 'confirm' | 'error'
-  const [voiceState, setVoiceState] = useState('idle')
+  const [voiceState, setVoiceState] = useState('off') // 'off' | 'listening' | 'confirm'
   const [voiceMsg, setVoiceMsg] = useState('')
-  const [countdown, setCountdown] = useState(3)
-  const mediaRecorderRef = useRef(null)
-  const chunksRef = useRef([])
-  const countdownRef = useRef(null)
+  const [voiceHeard, setVoiceHeard] = useState('')
+  const recognitionRef = useRef(null)
+  const restartTimerRef = useRef(null)
   const currentHoleRef = useRef(currentHole)
+  const wakeLockRef = useRef(null)
 
-  const scoresRef = useRef(scores)
-  useEffect(() => { scoresRef.current = scores }, [scores])
   useEffect(() => { currentHoleRef.current = currentHole }, [currentHole])
 
   const persist = (i, t, s) =>
@@ -90,79 +86,80 @@ export default function App() {
     persist(index, tee, fresh)
   }
 
-  // Record 3 seconds of audio, send to Whisper
-  const startRecording = useCallback(async () => {
-    if (voiceState !== 'idle') return
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      const mr = new MediaRecorder(stream)
-      chunksRef.current = []
-      mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
-      mr.onstop = async () => {
-        stream.getTracks().forEach(t => t.stop())
-        setVoiceState('processing')
-        try {
-          const blob = new Blob(chunksRef.current, { type: mr.mimeType || 'audio/webm' })
-          const base64 = await new Promise((resolve, reject) => {
-            const reader = new FileReader()
-            reader.onload = () => resolve(reader.result.split(',')[1])
-            reader.onerror = reject
-            reader.readAsDataURL(blob)
-          })
-          const res = await fetch('/api/transcribe', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ audio: base64, mimeType: mr.mimeType || 'audio/webm' }),
-          })
-          const { transcript, error } = await res.json()
-          if (error) throw new Error(error)
-          const score = parseVoice(transcript)
-          const hole = currentHoleRef.current
-          if (score !== null) {
-            setScore(hole, score)
-            setVoiceMsg(`✓ Hole ${hole + 1} — scored ${score}`)
-            setVoiceState('confirm')
-          } else {
-            setVoiceMsg(`Heard: "${transcript}" — try again`)
-            setVoiceState('error')
-          }
-        } catch (err) {
-          setVoiceMsg(err.message)
-          setVoiceState('error')
-        }
-        setTimeout(() => { setVoiceState('idle'); setVoiceMsg('') }, 2500)
-      }
-      mr.start()
-      mediaRecorderRef.current = mr
-      setVoiceState('recording')
-      setCountdown(3)
-      let c = 3
-      countdownRef.current = setInterval(() => {
-        c--
-        setCountdown(c)
-        if (c <= 0) {
-          clearInterval(countdownRef.current)
-          mr.stop()
-          mediaRecorderRef.current = null
-        }
-      }, 1000)
-    } catch {
-      setVoiceMsg('Mic permission denied')
-      setVoiceState('error')
-      setTimeout(() => { setVoiceState('idle'); setVoiceMsg('') }, 2500)
-    }
-  }, [voiceState, setScore])
+  const startListening = useCallback(() => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SR || recognitionRef.current) return
 
-  const stopRecordingEarly = () => {
-    clearInterval(countdownRef.current)
-    if (mediaRecorderRef.current?.state === 'recording') {
-      mediaRecorderRef.current.stop()
-      mediaRecorderRef.current = null
+    const rec = new SR()
+    rec.lang = 'en-GB'
+    rec.continuous = true
+    rec.interimResults = true
+    rec.maxAlternatives = 3
+    recognitionRef.current = rec
+
+    rec.onstart = () => setVoiceState('listening')
+
+    let lastScore = null
+    let lastScoreTime = 0
+
+    rec.onresult = (e) => {
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const result = e.results[i]
+        setVoiceHeard(result[0].transcript)
+
+        const alts = result.isFinal
+          ? Array.from({ length: result.length }, (_, j) => result[j].transcript)
+          : [result[0].transcript]
+
+        for (const transcript of alts) {
+          const score = parseVoice(transcript)
+          if (score !== null) {
+            const now = Date.now()
+            if (score === lastScore && now - lastScoreTime < 2000) return
+            lastScore = score
+            lastScoreTime = now
+            setScore(currentHoleRef.current, score)
+            setVoiceState('confirm')
+            setVoiceMsg(`✓ Hole ${currentHoleRef.current + 1} — scored ${score}`)
+            setVoiceHeard('')
+            setTimeout(() => { setVoiceState('listening'); setVoiceHeard('') }, 2000)
+            return
+          }
+        }
+      }
     }
+
+    rec.onerror = (e) => {
+      if (e.error === 'no-speech') return
+      if (e.error === 'not-allowed') { setVoiceState('off'); return }
+    }
+
+    rec.onend = () => {
+      if (recognitionRef.current === rec) {
+        recognitionRef.current = null
+        restartTimerRef.current = setTimeout(startListening, 300)
+      }
+    }
+
+    try { rec.start() } catch {}
+  }, [setScore])
+
+  const stopListening = () => {
+    clearTimeout(restartTimerRef.current)
+    const rec = recognitionRef.current
+    recognitionRef.current = null
+    try { rec?.abort() } catch {}
+    setVoiceState('off')
+    setVoiceMsg('')
+    setVoiceHeard('')
+  }
+
+  const toggleVoice = () => {
+    if (voiceState === 'off') startListening()
+    else stopListening()
   }
 
   // Wake lock
-  const wakeLockRef = useRef(null)
   useEffect(() => {
     const acquire = async () => {
       try {
@@ -179,53 +176,14 @@ export default function App() {
     }
   }, [])
 
-  const [igStatus, setIgStatus] = useState('idle')
-  const [igError, setIgError] = useState('')
-
-  const handlePostToIG = async () => {
-    const d = new Date()
-    const dd = String(d.getDate()).padStart(2, '0')
-    const mm = String(d.getMonth() + 1).padStart(2, '0')
-    const yy = String(d.getFullYear()).slice(-2)
-    setIgStatus('posting')
-    setIgError('')
-    try {
-      localStorage.setItem(CRED_KEY, JSON.stringify({ memberId, pin }))
-      const res = await fetch('/api/post-score', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          memberId, pin,
-          tees: tee === 'white' ? 1 : 2,
-          date: `${dd}-${mm}-${yy}`,
-          hcap: playingHcp ?? 0,
-          scores,
-        }),
-      })
-      const data = await res.json()
-      if (data.ok) setIgStatus('ok')
-      else { setIgStatus('error'); setIgError(data.error ?? 'Unknown error') }
-    } catch (err) {
-      setIgStatus('error'); setIgError(err.message)
-    }
-  }
-
-  // BT clicker — VolumeUp = record, VolumeDown = next hole
+  // Auto-start listening
   useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === 'AudioVolumeUp' || e.key === 'VolumeUp') {
-        e.preventDefault()
-        startRecording()
-      } else if (e.key === 'AudioVolumeDown' || e.key === 'VolumeDown') {
-        e.preventDefault()
-        setCurrentHole(h => (h + 1) % 18)
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [startRecording])
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (SR) startListening()
+    return () => stopListening()
+  }, [])
 
-  // GPS — auto-switch hole when near a green
+  // GPS
   useEffect(() => {
     if (!navigator.geolocation) return
     const watchId = navigator.geolocation.watchPosition(
@@ -239,8 +197,45 @@ export default function App() {
     return () => navigator.geolocation.clearWatch(watchId)
   }, [])
 
+  // BT clicker
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'AudioVolumeUp' || e.key === 'VolumeUp') {
+        e.preventDefault()
+        changeScore(currentHoleRef.current, +1)
+      } else if (e.key === 'AudioVolumeDown' || e.key === 'VolumeDown') {
+        e.preventDefault()
+        setCurrentHole(h => (h + 1) % 18)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [changeScore])
+
+  const [igStatus, setIgStatus] = useState('idle')
+  const [igError, setIgError] = useState('')
+
+  const handlePostToIG = async () => {
+    const d = new Date()
+    const dd = String(d.getDate()).padStart(2, '0')
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const yy = String(d.getFullYear()).slice(-2)
+    setIgStatus('posting'); setIgError('')
+    try {
+      localStorage.setItem(CRED_KEY, JSON.stringify({ memberId, pin }))
+      const res = await fetch('/api/post-score', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberId, pin, tees: tee === 'white' ? 1 : 2, date: `${dd}-${mm}-${yy}`, hcap: playingHcp ?? 0, scores }),
+      })
+      const data = await res.json()
+      if (data.ok) setIgStatus('ok')
+      else { setIgStatus('error'); setIgError(data.error ?? 'Unknown error') }
+    } catch (err) { setIgStatus('error'); setIgError(err.message) }
+  }
+
   const handleExit = () => {
-    stopRecordingEarly()
+    stopListening()
     wakeLockRef.current?.release()
     setFinished({ totalPts, outPts, inPts, tee, index })
   }
@@ -249,6 +244,7 @@ export default function App() {
     localStorage.removeItem(STORAGE_KEY)
     setScores(Array(18).fill(null))
     setFinished(null)
+    startListening()
   }
 
   const holeData = holes.map((h, i) => {
@@ -278,15 +274,12 @@ export default function App() {
           <div className="ig-section">
             <div className="ig-creds">
               <input className="ig-input" type="text" inputMode="email"
-                placeholder="Member ID or email" value={memberId}
-                onChange={e => setMemberId(e.target.value)} />
+                placeholder="Member ID or email" value={memberId} onChange={e => setMemberId(e.target.value)} />
               <input className="ig-input" type="password"
-                placeholder="PIN" value={pin}
-                onChange={e => setPin(e.target.value)} />
+                placeholder="PIN" value={pin} onChange={e => setPin(e.target.value)} />
             </div>
             {igStatus !== 'ok' && (
-              <button className="ig-btn" onClick={handlePostToIG}
-                disabled={igStatus === 'posting' || !memberId || !pin}>
+              <button className="ig-btn" onClick={handlePostToIG} disabled={igStatus === 'posting' || !memberId || !pin}>
                 {igStatus === 'posting' ? 'Posting…' : 'Post to Intelligent Golf'}
               </button>
             )}
@@ -302,7 +295,6 @@ export default function App() {
 
   return (
     <div className="app">
-      {/* ── Header ── */}
       <div className="header">
         <div className="header-left">
           <div className="index-field">
@@ -326,33 +318,22 @@ export default function App() {
             <span className="hole-pick-num">{currentHole + 1}</span>
             <button className="hole-pick-btn" onClick={() => setCurrentHole(h => (h + 1) % 18)}>›</button>
           </div>
-          <button
-            className={`mic-btn ${voiceState}`}
-            onPointerDown={voiceState === 'idle' ? startRecording : voiceState === 'recording' ? stopRecordingEarly : undefined}
-            title="Hold to record score"
-          >
-            {voiceState === 'recording' ? countdown : voiceState === 'processing' ? '…' : '🎤'}
+          <button className={`mic-indicator ${voiceState}`} onClick={toggleVoice}
+            title={voiceState === 'off' ? 'Tap to enable voice' : 'Tap to disable voice'}>
+            <span className="mic-dot" />
           </button>
           <button className="icon-btn" onClick={resetScores} title="Reset scores">↩</button>
           <button className="exit-btn" onClick={handleExit} title="End round">Exit</button>
         </div>
       </div>
 
-      {/* ── Voice status banner ── */}
-      {voiceState === 'recording' && (
-        <div className="voice-banner recording">Recording… {countdown}s (tap to stop early)</div>
-      )}
-      {voiceState === 'processing' && (
-        <div className="voice-banner processing">Transcribing…</div>
-      )}
-      {voiceState === 'confirm' && (
-        <div className="voice-banner confirm">{voiceMsg}</div>
-      )}
-      {voiceState === 'error' && (
-        <div className="voice-banner error">{voiceMsg}</div>
+      {voiceState === 'confirm' && <div className="voice-banner confirm">{voiceMsg}</div>}
+      {voiceState === 'listening' && (
+        <div className="voice-banner listening">
+          {voiceHeard ? `"${voiceHeard}"` : 'Listening…'}
+        </div>
       )}
 
-      {/* ── Scorecard grid ── */}
       <div className="grid">
         {holeData.map((h, i) => {
           const pts = h.pts
@@ -376,7 +357,6 @@ export default function App() {
         })}
       </div>
 
-      {/* ── Subtotals bar ── */}
       <div className="sub-bar">
         <span>OUT <strong>{outPts}</strong></span>
         <div className="total-pts">
@@ -386,7 +366,6 @@ export default function App() {
         <span>IN <strong>{inPts}</strong></span>
       </div>
 
-      {/* ── Hole detail popup ── */}
       {popupHole && (
         <div className="overlay" onClick={() => setPopup(null)}>
           <div className="popup" onClick={e => e.stopPropagation()}>
