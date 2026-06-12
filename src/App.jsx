@@ -23,10 +23,10 @@ function normalise(transcript) {
 }
 
 function parseVoice(transcript) {
-  const t = normalise(transcript)
+  const t = normalise(transcript + ' strokes')
   const nums = (t.match(/\d+/g) || []).map(Number).filter(n => n >= 1 && n <= 15)
   if (!nums.length) return null
-  return nums[nums.length - 1] // take the last valid number
+  return nums[nums.length - 1]
 }
 
 const CRED_KEY = 'ig_credentials'
@@ -332,7 +332,7 @@ export default function App() {
           </button>
           <button className="icon-btn" onClick={resetScores} title="Reset scores">↩</button>
           <button className="exit-btn" onClick={handleExit} title="End round">Exit</button>
-          <span className="version-tag">v1.19</span>
+          <span className="version-tag">v1.20</span>
         </div>
       </div>
 
