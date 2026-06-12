@@ -24,11 +24,9 @@ function normalise(transcript) {
 
 function parseVoice(transcript) {
   const t = normalise(transcript)
-  const nums = t.match(/\d+/g)
-  if (!nums || nums.length !== 1) return null
-  const score = parseInt(nums[0])
-  if (score < 1 || score > 15) return null
-  return score
+  const nums = (t.match(/\d+/g) || []).map(Number).filter(n => n >= 1 && n <= 15)
+  if (!nums.length) return null
+  return nums[nums.length - 1] // take the last valid number
 }
 
 const CRED_KEY = 'ig_credentials'
@@ -171,26 +169,26 @@ export default function App() {
     }
   }, [])
 
-  // Auto-start listening
-  useEffect(() => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (SR) startListening()
-    return () => stopListening()
-  }, [])
+  // Cleanup on unmount
+  useEffect(() => () => stopListening(), [])
 
-  // GPS
+  // GPS — auto-select hole and toggle mic within 30m of any green
   useEffect(() => {
     if (!navigator.geolocation) return
     const watchId = navigator.geolocation.watchPosition(
       pos => {
-        const idx = nearestGreen(pos.coords.latitude, pos.coords.longitude)
-        if (idx !== null) setCurrentHole(idx)
+        const { latitude, longitude } = pos.coords
+        const nearIdx = nearestGreen(latitude, longitude, 30)
+        const onGreen = nearestGreen(latitude, longitude, 6)
+        if (onGreen !== null) setCurrentHole(onGreen)
+        if (nearIdx !== null) startListening()
+        else stopListening()
       },
       () => {},
       { enableHighAccuracy: true, maximumAge: 5000 }
     )
     return () => navigator.geolocation.clearWatch(watchId)
-  }, [])
+  }, [startListening])
 
   // BT clicker
   useEffect(() => {
@@ -319,7 +317,7 @@ export default function App() {
           </button>
           <button className="icon-btn" onClick={resetScores} title="Reset scores">↩</button>
           <button className="exit-btn" onClick={handleExit} title="End round">Exit</button>
-          <span className="version-tag">v1.14</span>
+          <span className="version-tag">v1.15</span>
         </div>
       </div>
 
