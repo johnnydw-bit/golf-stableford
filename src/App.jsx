@@ -92,27 +92,35 @@ export default function App() {
 
     const rec = new SR()
     rec.lang = 'en-US'
-    rec.continuous = false
-    rec.interimResults = false
+    rec.continuous = true
+    rec.interimResults = true
     rec.maxAlternatives = 5
     recognitionRef.current = rec
 
     rec.onstart = () => setVoiceState('listening')
 
+    let lastScore = null
+    let lastScoreTime = 0
+
     rec.onresult = (e) => {
-      const results = Array.from(e.results).flatMap(r =>
-        Array.from({ length: r.length }, (_, j) => r[j].transcript)
-      )
-      setVoiceHeard(results[0] ?? '')
-      for (const transcript of results) {
-        const score = parseVoice(transcript)
-        if (score !== null) {
-          setScore(currentHoleRef.current, score)
-          setVoiceState('confirm')
-          setVoiceMsg(`✓ Hole ${currentHoleRef.current + 1} — scored ${score}`)
-          setVoiceHeard('')
-          setTimeout(() => setVoiceState('listening'), 2000)
-          return
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const result = e.results[i]
+        setVoiceHeard(result[0].transcript)
+        const alts = Array.from({ length: result.length }, (_, j) => result[j].transcript)
+        for (const transcript of alts) {
+          const score = parseVoice(transcript)
+          if (score !== null) {
+            const now = Date.now()
+            if (score === lastScore && now - lastScoreTime < 2000) return
+            lastScore = score
+            lastScoreTime = now
+            setScore(currentHoleRef.current, score)
+            setVoiceState('confirm')
+            setVoiceMsg(`✓ Hole ${currentHoleRef.current + 1} — scored ${score}`)
+            setVoiceHeard('')
+            setTimeout(() => { setVoiceState('listening'); setVoiceHeard('') }, 2000)
+            return
+          }
         }
       }
     }
@@ -302,9 +310,9 @@ export default function App() {
         </div>
         <div className="header-right">
           <div className="hole-picker">
-            <button className="hole-pick-btn" onClick={() => setCurrentHole(h => (h + 17) % 18)}>‹</button>
+            <button className="hole-pick-btn" onPointerDown={() => setCurrentHole(h => (h + 17) % 18)}>‹</button>
             <span className="hole-pick-num">{currentHole + 1}</span>
-            <button className="hole-pick-btn" onClick={() => setCurrentHole(h => (h + 1) % 18)}>›</button>
+            <button className="hole-pick-btn" onPointerDown={() => setCurrentHole(h => (h + 1) % 18)}>›</button>
           </div>
           <button className={`mic-indicator ${voiceState}`} onClick={toggleVoice}
             title={voiceState === 'off' ? 'Tap to enable voice' : 'Tap to disable voice'}>
