@@ -51,6 +51,8 @@ export default function App() {
   const restartTimerRef = useRef(null)
   const currentHoleRef = useRef(currentHole)
   const wakeLockRef = useRef(null)
+  const lastScoreRef = useRef(null)
+  const lastScoreTimeRef = useRef(0)
 
   useEffect(() => { currentHoleRef.current = currentHole }, [currentHole])
 
@@ -92,16 +94,12 @@ export default function App() {
 
     const rec = new SR()
     rec.lang = 'en-US'
-    rec.continuous = false
-    rec.interimResults = false
+    rec.continuous = true
+    rec.interimResults = true
     rec.maxAlternatives = 5
     recognitionRef.current = rec
 
-    rec.onstart = () => { setVoiceState('listening'); setVoiceHeard('SPEAK NOW') }
-    rec.onspeechstart = () => setVoiceHeard('Hearing…')
-
-    let lastScore = null
-    let lastScoreTime = 0
+    rec.onstart = () => setVoiceState('listening')
 
     rec.onresult = (e) => {
       for (let i = e.resultIndex; i < e.results.length; i++) {
@@ -112,9 +110,9 @@ export default function App() {
           const score = parseVoice(transcript)
           if (score !== null) {
             const now = Date.now()
-            if (score === lastScore && now - lastScoreTime < 2000) return
-            lastScore = score
-            lastScoreTime = now
+            if (score === lastScoreRef.current && now - lastScoreTimeRef.current < 2000) return
+            lastScoreRef.current = score
+            lastScoreTimeRef.current = now
             setScore(currentHoleRef.current, score)
             setVoiceState('confirm')
             setVoiceMsg(`✓ Hole ${currentHoleRef.current + 1} — scored ${score}`)
@@ -321,6 +319,7 @@ export default function App() {
           </button>
           <button className="icon-btn" onClick={resetScores} title="Reset scores">↩</button>
           <button className="exit-btn" onClick={handleExit} title="End round">Exit</button>
+          <span className="version-tag">v1.14</span>
         </div>
       </div>
 
@@ -330,7 +329,6 @@ export default function App() {
           {voiceHeard ? `"${voiceHeard}"` : 'Listening…'}
         </div>
       )}
-      <div className="version">v1.13</div>
 
       <div className="grid">
         {holeData.map((h, i) => {
