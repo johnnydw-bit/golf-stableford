@@ -320,14 +320,14 @@ export default function App() {
           </button>
           <button className="icon-btn" onClick={resetScores} title="Reset scores">↩</button>
           <button className="exit-btn" onClick={handleExit} title="End round">Exit</button>
-          <span className="version-tag">v1.17</span>
+          <span className="version-tag">v1.18</span>
         </div>
       </div>
 
       {voiceState === 'confirm' && <div className="voice-banner confirm">{voiceMsg}</div>}
       {voiceState === 'listening' && (
         <div className="voice-banner listening">
-          {voiceHeard ? `"${voiceHeard}"` : 'Listening…'}
+          {voiceHeard ? `"${voiceHeard}"` : 'Say: zero N · N strokes · N shots'}
         </div>
       )}
 
