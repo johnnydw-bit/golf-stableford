@@ -49,6 +49,7 @@ export default function App() {
   const restartTimerRef = useRef(null)
   const currentHoleRef = useRef(currentHole)
   const wakeLockRef = useRef(null)
+  const manualMicRef = useRef(false)
   const lastScoreRef = useRef(null)
   const lastScoreTimeRef = useRef(0)
 
@@ -148,8 +149,8 @@ export default function App() {
   }
 
   const toggleVoice = () => {
-    if (voiceState === 'off') startListening()
-    else stopListening()
+    if (voiceState === 'off') { manualMicRef.current = true; startListening() }
+    else { manualMicRef.current = false; stopListening() }
   }
 
   // Wake lock
@@ -181,7 +182,10 @@ export default function App() {
         const nearIdx = nearestGreen(latitude, longitude, 30)
         const onGreen = nearestGreen(latitude, longitude, 6)
         if (onGreen !== null) setCurrentHole(onGreen)
-        if (nearIdx !== null) startListening()
+        if (!manualMicRef.current) {
+          if (nearIdx !== null) startListening()
+          else stopListening()
+        }
       },
       () => {},
       { enableHighAccuracy: true, maximumAge: 5000 }
@@ -316,7 +320,7 @@ export default function App() {
           </button>
           <button className="icon-btn" onClick={resetScores} title="Reset scores">↩</button>
           <button className="exit-btn" onClick={handleExit} title="End round">Exit</button>
-          <span className="version-tag">v1.16</span>
+          <span className="version-tag">v1.17</span>
         </div>
       </div>
 
