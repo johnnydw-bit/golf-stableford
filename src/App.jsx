@@ -330,6 +330,7 @@ export default function App() {
           {voiceHeard ? `"${voiceHeard}"` : 'Listening…'}
         </div>
       )}
+      <div className="version">v1.13</div>
 
       <div className="grid">
         {holeData.map((h, i) => {

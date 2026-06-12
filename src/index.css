@@ -154,6 +154,7 @@ html, body, #root {
 }
 .hole-row:nth-child(even) { background: var(--gray-100); }
 .hole-row.after-nine { border-bottom: 2px solid var(--green-700); }
+.version { position: fixed; bottom: 3.5rem; right: 0.4rem; font-size: 0.6rem; color: var(--gray-400); pointer-events: none; }
 .hole-row.active-hole { background: #f0fdf4 !important; outline: 2px solid var(--green-700); outline-offset: -2px; }
 
 /* hole number button */
