@@ -28,13 +28,12 @@ function normalise(transcript) {
 }
 
 // Parse a single number (1-15) from transcript — returns score or null
+// Requires exactly one number to be present after normalising words to digits
 function parseVoice(transcript) {
   const t = normalise(transcript)
-  // Strip common filler — what remains should be just a number
-  const stripped = t.replace(/\b(uh|um|er|the|a|and|please|score|scored|is|it|just|my|i|okay|ok)\b/g, '').trim()
-  const m = stripped.match(/^(\d+)$/)
-  if (!m) return null
-  const score = parseInt(m[1])
+  const nums = t.match(/\d+/g)
+  if (!nums || nums.length !== 1) return null
+  const score = parseInt(nums[0])
   if (score < 1 || score > 15) return null
   return score
 }
