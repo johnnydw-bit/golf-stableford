@@ -91,11 +91,23 @@ export default function App() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SR || recognitionRef.current) return
 
+    const SGL = window.SpeechGrammarList || window.webkitSpeechGrammarList
     const rec = new SR()
     rec.lang = 'en-US'
     rec.continuous = true
     rec.interimResults = true
     rec.maxAlternatives = 5
+    if (SGL) {
+      const grammar = '#JSGF V1.0; grammar score; public <score> = ' +
+        'one | two | three | four | five | six | seven | eight | nine | ten | ' +
+        'eleven | twelve | thirteen | fourteen | fifteen | ' +
+        'zero one | zero two | zero three | zero four | zero five | ' +
+        'zero six | zero seven | zero eight | zero nine | zero ten | ' +
+        'zero eleven | zero twelve | zero thirteen | zero fourteen | zero fifteen ;'
+      const list = new SGL()
+      list.addFromString(grammar, 1)
+      rec.grammars = list
+    }
     recognitionRef.current = rec
 
     rec.onstart = () => setVoiceState('listening')
@@ -320,7 +332,7 @@ export default function App() {
           </button>
           <button className="icon-btn" onClick={resetScores} title="Reset scores">↩</button>
           <button className="exit-btn" onClick={handleExit} title="End round">Exit</button>
-          <span className="version-tag">v1.18</span>
+          <span className="version-tag">v1.19</span>
         </div>
       </div>
 
