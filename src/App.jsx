@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { holes, tees, courseHandicap, shotsOnHole, stablefordPoints, nearestGreen } from './courseData.js'
 
 const STORAGE_KEY = 'golf_round'
@@ -6,18 +6,13 @@ function loadSaved() { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)
 const saved = loadSaved()
 
 const WORD_NUMS = {
-  // Standard words
   one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9,
   ten:10, eleven:11, twelve:12, thirteen:13, fourteen:14, fifteen:15,
   sixteen:16, seventeen:17, eighteen:18,
-  // Common speech-recognition mishearings
   won:1, 'to':2, too:2, 'free':3, fore:4, 'for':4, foreign:4,
   'sex':6, sick:6, ate:8, niner:9,
 }
-
-// Normalise word-numbers to digits, longest words first to avoid partial matches
-const WORD_NUMS_SORTED = Object.entries(WORD_NUMS)
-  .sort((a, b) => b[0].length - a[0].length)
+const WORD_NUMS_SORTED = Object.entries(WORD_NUMS).sort((a, b) => b[0].length - a[0].length)
 
 function normalise(transcript) {
   let t = transcript.toLowerCase().trim()
@@ -27,8 +22,6 @@ function normalise(transcript) {
   return t
 }
 
-// Parse a single number (1-15) from transcript — returns score or null
-// Requires exactly one number to be present after normalising words to digits
 function parseVoice(transcript) {
   const t = normalise(transcript)
   const nums = t.match(/\d+/g)
@@ -45,30 +38,28 @@ export default function App() {
   const [index, setIndex] = useState(saved?.index ?? '')
   const [tee, setTee] = useState(saved?.tee ?? 'yellow')
   const [scores, setScores] = useState(saved?.scores ?? Array(18).fill(null))
-  const [finished, setFinished] = useState(null) // { totalPts, outPts, inPts } when round ended
+  const [finished, setFinished] = useState(null)
   const savedCreds = loadCreds()
   const [memberId, setMemberId] = useState(savedCreds.memberId ?? '')
-  const [pin, setPin]           = useState(savedCreds.pin ?? '')
+  const [pin, setPin] = useState(savedCreds.pin ?? '')
   const [popup, setPopup] = useState(null)
-  const [currentHole, setCurrentHole] = useState(0) // 0-based index of active hole
-  const [voiceState, setVoiceState] = useState('off') // 'off' | 'listening' | 'confirm' | 'error'
+  const [currentHole, setCurrentHole] = useState(0)
+
+  // Voice state: 'idle' | 'recording' | 'processing' | 'confirm' | 'error'
+  const [voiceState, setVoiceState] = useState('idle')
   const [voiceMsg, setVoiceMsg] = useState('')
-  const [voiceHeard, setVoiceHeard] = useState('')
-  const recognitionRef = useRef(null)
-  const restartTimerRef = useRef(null)
-  const scoresRef = useRef(scores)
-  const indexRef = useRef(index)
-  const teeRef = useRef(tee)
+  const [countdown, setCountdown] = useState(3)
+  const mediaRecorderRef = useRef(null)
+  const chunksRef = useRef([])
+  const countdownRef = useRef(null)
   const currentHoleRef = useRef(currentHole)
+
+  const scoresRef = useRef(scores)
+  useEffect(() => { scoresRef.current = scores }, [scores])
+  useEffect(() => { currentHoleRef.current = currentHole }, [currentHole])
 
   const persist = (i, t, s) =>
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ index: i, tee: t, scores: s }))
-
-  // Keep refs in sync so recognition callbacks always see latest state
-  useEffect(() => { scoresRef.current = scores }, [scores])
-  useEffect(() => { indexRef.current = index }, [index])
-  useEffect(() => { teeRef.current = tee }, [tee])
-  useEffect(() => { currentHoleRef.current = currentHole }, [currentHole])
 
   const playingHcp = index !== '' && !isNaN(Number(index))
     ? courseHandicap(Number(index), tee) : null
@@ -99,98 +90,84 @@ export default function App() {
     persist(index, tee, fresh)
   }
 
-  // Always-on continuous recognition — listens for a single number
-  const startListening = useCallback(() => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SR) return
-
-    // Reuse existing instance if still alive to avoid beep-on-restart
-    if (recognitionRef.current) return
-
-    const rec = new SR()
-    rec.lang = 'en-GB'
-    rec.continuous = true
-    rec.interimResults = true
-    rec.maxAlternatives = 3
-    recognitionRef.current = rec
-
-    rec.onstart = () => setVoiceState('listening')
-
-    let lastScore = null
-    let lastScoreTime = 0
-
-    rec.onresult = (e) => {
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const result = e.results[i]
-        setVoiceHeard(result[0].transcript)
-
-        // Try all alternatives on final results; also try best on interim
-        const alts = result.isFinal
-          ? Array.from({ length: result.length }, (_, j) => result[j].transcript)
-          : [result[0].transcript]
-
-        for (const transcript of alts) {
+  // Record 3 seconds of audio, send to Whisper
+  const startRecording = useCallback(async () => {
+    if (voiceState !== 'idle') return
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mr = new MediaRecorder(stream)
+      chunksRef.current = []
+      mr.ondataavailable = e => { if (e.data.size > 0) chunksRef.current.push(e.data) }
+      mr.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop())
+        setVoiceState('processing')
+        try {
+          const blob = new Blob(chunksRef.current, { type: mr.mimeType || 'audio/webm' })
+          const base64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve(reader.result.split(',')[1])
+            reader.onerror = reject
+            reader.readAsDataURL(blob)
+          })
+          const res = await fetch('/api/transcribe', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ audio: base64, mimeType: mr.mimeType || 'audio/webm' }),
+          })
+          const { transcript, error } = await res.json()
+          if (error) throw new Error(error)
           const score = parseVoice(transcript)
+          const hole = currentHoleRef.current
           if (score !== null) {
-            const now = Date.now()
-            if (score === lastScore && now - lastScoreTime < 2000) return
-            lastScore = score
-            lastScoreTime = now
-
-            setScore(currentHoleRef.current, score)
+            setScore(hole, score)
+            setVoiceMsg(`✓ Hole ${hole + 1} — scored ${score}`)
             setVoiceState('confirm')
-            setVoiceMsg(`✓ Hole ${currentHoleRef.current + 1} — scored ${score}`)
-            setVoiceHeard('')
-            setTimeout(() => { setVoiceState('listening'); setVoiceHeard('') }, 2000)
-            return
+          } else {
+            setVoiceMsg(`Heard: "${transcript}" — try again`)
+            setVoiceState('error')
           }
+        } catch (err) {
+          setVoiceMsg(err.message)
+          setVoiceState('error')
         }
+        setTimeout(() => { setVoiceState('idle'); setVoiceMsg('') }, 2500)
       }
+      mr.start()
+      mediaRecorderRef.current = mr
+      setVoiceState('recording')
+      setCountdown(3)
+      let c = 3
+      countdownRef.current = setInterval(() => {
+        c--
+        setCountdown(c)
+        if (c <= 0) {
+          clearInterval(countdownRef.current)
+          mr.stop()
+          mediaRecorderRef.current = null
+        }
+      }, 1000)
+    } catch {
+      setVoiceMsg('Mic permission denied')
+      setVoiceState('error')
+      setTimeout(() => { setVoiceState('idle'); setVoiceMsg('') }, 2500)
     }
+  }, [voiceState, setScore])
 
-    rec.onerror = (e) => {
-      if (e.error === 'no-speech') return // silent timeout, just restart
-      if (e.error === 'not-allowed') {
-        setVoiceState('off')
-        setVoiceMsg('Mic permission denied')
-        return
-      }
+  const stopRecordingEarly = () => {
+    clearInterval(countdownRef.current)
+    if (mediaRecorderRef.current?.state === 'recording') {
+      mediaRecorderRef.current.stop()
+      mediaRecorderRef.current = null
     }
-
-    // Restart only if we haven't been stopped intentionally
-    rec.onend = () => {
-      if (recognitionRef.current === rec) {
-        recognitionRef.current = null  // allow fresh start without beep
-        restartTimerRef.current = setTimeout(startListening, 300)
-      }
-    }
-
-    try { rec.start() } catch {}
-  }, [])
-
-  const stopListening = () => {
-    clearTimeout(restartTimerRef.current)
-    const rec = recognitionRef.current
-    recognitionRef.current = null
-    try { rec?.abort() } catch {}
-    setVoiceState('off')
-    setVoiceMsg('')
-    setVoiceHeard('')
   }
 
-  const toggleVoice = () => {
-    if (voiceState === 'off') startListening()
-    else stopListening()
-  }
-
-  // Wake lock — keep screen on while app is open
+  // Wake lock
   const wakeLockRef = useRef(null)
   useEffect(() => {
     const acquire = async () => {
       try {
-        if ('wakeLock' in navigator) {
+        if ('wakeLock' in navigator)
           wakeLockRef.current = await navigator.wakeLock.request('screen')
-        }
       } catch {}
     }
     acquire()
@@ -202,15 +179,14 @@ export default function App() {
     }
   }, [])
 
-  const [igStatus, setIgStatus] = useState('idle') // 'idle' | 'posting' | 'ok' | 'error'
-  const [igError, setIgError]   = useState('')
+  const [igStatus, setIgStatus] = useState('idle')
+  const [igError, setIgError] = useState('')
 
   const handlePostToIG = async () => {
     const d = new Date()
     const dd = String(d.getDate()).padStart(2, '0')
     const mm = String(d.getMonth() + 1).padStart(2, '0')
     const yy = String(d.getFullYear()).slice(-2)
-
     setIgStatus('posting')
     setIgError('')
     try {
@@ -227,24 +203,19 @@ export default function App() {
         }),
       })
       const data = await res.json()
-      if (data.ok) {
-        setIgStatus('ok')
-      } else {
-        setIgStatus('error')
-        setIgError(data.error ?? 'Unknown error')
-      }
+      if (data.ok) setIgStatus('ok')
+      else { setIgStatus('error'); setIgError(data.error ?? 'Unknown error') }
     } catch (err) {
-      setIgStatus('error')
-      setIgError(err.message)
+      setIgStatus('error'); setIgError(err.message)
     }
   }
 
-  // BT clicker — VolumeUp = +1 stroke on current hole, VolumeDown = next hole
+  // BT clicker — VolumeUp = record, VolumeDown = next hole
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === 'AudioVolumeUp' || e.key === 'VolumeUp') {
         e.preventDefault()
-        changeScore(currentHole, +1)
+        startRecording()
       } else if (e.key === 'AudioVolumeDown' || e.key === 'VolumeDown') {
         e.preventDefault()
         setCurrentHole(h => (h + 1) % 18)
@@ -252,26 +223,24 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [currentHole, changeScore])
+  }, [startRecording])
 
-  // GPS — auto-switch current hole when within 6m of a green
+  // GPS — auto-switch hole when near a green
   useEffect(() => {
     if (!navigator.geolocation) return
     const watchId = navigator.geolocation.watchPosition(
       pos => {
-        const { latitude, longitude } = pos.coords
-        const idx = nearestGreen(latitude, longitude)
+        const idx = nearestGreen(pos.coords.latitude, pos.coords.longitude)
         if (idx !== null) setCurrentHole(idx)
       },
-      () => {}, // silently ignore errors
+      () => {},
       { enableHighAccuracy: true, maximumAge: 5000 }
     )
     return () => navigator.geolocation.clearWatch(watchId)
   }, [])
 
-  // Exit — stop mic, release wake lock, show summary
   const handleExit = () => {
-    stopListening()
+    stopRecordingEarly()
     wakeLockRef.current?.release()
     setFinished({ totalPts, outPts, inPts, tee, index })
   }
@@ -280,14 +249,7 @@ export default function App() {
     localStorage.removeItem(STORAGE_KEY)
     setScores(Array(18).fill(null))
     setFinished(null)
-    startListening()
   }
-
-  useEffect(() => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (SR) startListening()
-    return () => stopListening()
-  }, [])
 
   const holeData = holes.map((h, i) => {
     const shots = playingHcp !== null ? shotsOnHole(playingHcp, h.si) : 0
@@ -299,7 +261,6 @@ export default function App() {
   const totalPts = sumPts(holeData)
   const outPts   = sumPts(holeData.slice(0, 9))
   const inPts    = sumPts(holeData.slice(9))
-
   const popupHole = popup !== null ? holeData[popup] : null
 
   if (finished) return (
@@ -316,28 +277,21 @@ export default function App() {
         {playingHcp !== null && (
           <div className="ig-section">
             <div className="ig-creds">
-              <input
-                className="ig-input" type="text" inputMode="email"
+              <input className="ig-input" type="text" inputMode="email"
                 placeholder="Member ID or email" value={memberId}
-                onChange={e => setMemberId(e.target.value)}
-              />
-              <input
-                className="ig-input" type="password"
+                onChange={e => setMemberId(e.target.value)} />
+              <input className="ig-input" type="password"
                 placeholder="PIN" value={pin}
-                onChange={e => setPin(e.target.value)}
-              />
+                onChange={e => setPin(e.target.value)} />
             </div>
             {igStatus !== 'ok' && (
-              <button
-                className="ig-btn"
-                onClick={handlePostToIG}
-                disabled={igStatus === 'posting' || !memberId || !pin}
-              >
+              <button className="ig-btn" onClick={handlePostToIG}
+                disabled={igStatus === 'posting' || !memberId || !pin}>
                 {igStatus === 'posting' ? 'Posting…' : 'Post to Intelligent Golf'}
               </button>
             )}
-            {igStatus === 'ok'    && <div className="ig-ok">Score posted to Intelligent Golf</div>}
-            {igStatus === 'ok'    && <div className="ig-note">Personal record only — use the IG app for an attested handicap round</div>}
+            {igStatus === 'ok' && <div className="ig-ok">Score posted to Intelligent Golf</div>}
+            {igStatus === 'ok' && <div className="ig-note">Personal record only — use the IG app for an attested handicap round</div>}
             {igStatus === 'error' && <div className="ig-err">{igError}</div>}
           </div>
         )}
@@ -352,11 +306,9 @@ export default function App() {
       <div className="header">
         <div className="header-left">
           <div className="index-field">
-            <input
-              type="number" inputMode="decimal" step="0.1" min="0" max="54"
+            <input type="number" inputMode="decimal" step="0.1" min="0" max="54"
               placeholder="Index" value={index}
-              onChange={e => { setIndex(e.target.value); persist(e.target.value, tee, scores) }}
-            />
+              onChange={e => { setIndex(e.target.value); persist(e.target.value, tee, scores) }} />
           </div>
           <div className="tee-toggle">
             {['white','yellow'].map(t => (
@@ -375,11 +327,11 @@ export default function App() {
             <button className="hole-pick-btn" onClick={() => setCurrentHole(h => (h + 1) % 18)}>›</button>
           </div>
           <button
-            className={`mic-indicator ${voiceState}`}
-            onClick={toggleVoice}
-            title={voiceState === 'off' ? 'Tap to enable voice' : 'Tap to disable voice'}
+            className={`mic-btn ${voiceState}`}
+            onPointerDown={voiceState === 'idle' ? startRecording : voiceState === 'recording' ? stopRecordingEarly : undefined}
+            title="Hold to record score"
           >
-            <span className="mic-dot" />
+            {voiceState === 'recording' ? countdown : voiceState === 'processing' ? '…' : '🎤'}
           </button>
           <button className="icon-btn" onClick={resetScores} title="Reset scores">↩</button>
           <button className="exit-btn" onClick={handleExit} title="End round">Exit</button>
@@ -387,13 +339,17 @@ export default function App() {
       </div>
 
       {/* ── Voice status banner ── */}
+      {voiceState === 'recording' && (
+        <div className="voice-banner recording">Recording… {countdown}s (tap to stop early)</div>
+      )}
+      {voiceState === 'processing' && (
+        <div className="voice-banner processing">Transcribing…</div>
+      )}
       {voiceState === 'confirm' && (
         <div className="voice-banner confirm">{voiceMsg}</div>
       )}
-      {voiceState === 'listening' && (
-        <div className="voice-banner listening">
-          {voiceHeard ? `"${voiceHeard}"` : '🎤 Listening…'}
-        </div>
+      {voiceState === 'error' && (
+        <div className="voice-banner error">{voiceMsg}</div>
       )}
 
       {/* ── Scorecard grid ── */}
