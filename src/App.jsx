@@ -92,12 +92,13 @@ export default function App() {
 
     const rec = new SR()
     rec.lang = 'en-US'
-    rec.continuous = true
-    rec.interimResults = true
+    rec.continuous = false
+    rec.interimResults = false
     rec.maxAlternatives = 5
     recognitionRef.current = rec
 
-    rec.onstart = () => setVoiceState('listening')
+    rec.onstart = () => { setVoiceState('listening'); setVoiceHeard('SPEAK NOW') }
+    rec.onspeechstart = () => setVoiceHeard('Hearing…')
 
     let lastScore = null
     let lastScoreTime = 0
