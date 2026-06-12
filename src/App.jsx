@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import { holes, tees, courseHandicap, shotsOnHole, stablefordPoints } from './courseData.js'
+import { holes, tees, courseHandicap, shotsOnHole, stablefordPoints, nearestGreen } from './courseData.js'
 
 const STORAGE_KEY = 'golf_round'
 function loadSaved() { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) } catch { return null } }
@@ -51,6 +51,7 @@ export default function App() {
   const [memberId, setMemberId] = useState(savedCreds.memberId ?? '')
   const [pin, setPin]           = useState(savedCreds.pin ?? '')
   const [popup, setPopup] = useState(null)
+  const [currentHole, setCurrentHole] = useState(0) // 0-based index of active hole
   const [voiceState, setVoiceState] = useState('off') // 'off' | 'listening' | 'confirm' | 'error'
   const [voiceMsg, setVoiceMsg] = useState('')
   const [voiceHeard, setVoiceHeard] = useState('')
@@ -226,6 +227,36 @@ export default function App() {
     }
   }
 
+  // BT clicker — VolumeUp = +1 stroke on current hole, VolumeDown = next hole
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'AudioVolumeUp' || e.key === 'VolumeUp') {
+        e.preventDefault()
+        changeScore(currentHole, +1)
+      } else if (e.key === 'AudioVolumeDown' || e.key === 'VolumeDown') {
+        e.preventDefault()
+        setCurrentHole(h => (h + 1) % 18)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [currentHole, changeScore])
+
+  // GPS — auto-switch current hole when within 6m of a green
+  useEffect(() => {
+    if (!navigator.geolocation) return
+    const watchId = navigator.geolocation.watchPosition(
+      pos => {
+        const { latitude, longitude } = pos.coords
+        const idx = nearestGreen(latitude, longitude)
+        if (idx !== null) setCurrentHole(idx)
+      },
+      () => {}, // silently ignore errors
+      { enableHighAccuracy: true, maximumAge: 5000 }
+    )
+    return () => navigator.geolocation.clearWatch(watchId)
+  }, [])
+
   // Exit — stop mic, release wake lock, show summary
   const handleExit = () => {
     stopListening()
@@ -354,7 +385,7 @@ export default function App() {
           const pts = h.pts
           const ptsClass = pts === null ? 'empty' : pts >= 4 ? 'p4' : pts === 3 ? 'p3' : pts === 2 ? 'p2' : pts === 1 ? 'p1' : 'p0'
           return (
-            <div key={h.hole} className={`hole-row ${i === 8 ? 'after-nine' : ''}`}>
+            <div key={h.hole} className={`hole-row ${i === 8 ? 'after-nine' : ''} ${i === currentHole ? 'active-hole' : ''}`} onClick={() => setCurrentHole(i)}>
               <button className="hole-num" onClick={() => setPopup(i)}>
                 <span className="hole-num-digit">{h.hole}</span>
                 {h.shots > 0 && <span className="dot-row">{Array.from({length:h.shots}).map((_,k)=><span key={k} className="dot"/>)}</span>}

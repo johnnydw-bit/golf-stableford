@@ -139,6 +139,7 @@ html, body, #root {
 }
 .hole-row:nth-child(even) { background: var(--gray-100); }
 .hole-row.after-nine { border-bottom: 2px solid var(--green-700); }
+.hole-row.active-hole { background: #f0fdf4 !important; outline: 2px solid var(--green-700); outline-offset: -2px; }
 
 /* hole number button */
 .hole-num {
