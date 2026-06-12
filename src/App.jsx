@@ -27,14 +27,11 @@ function normalise(transcript) {
   return t
 }
 
-const MIN_CONFIDENCE = 0.75
-
 // Parse a single number (1-15) from transcript — returns score or null
-function parseVoice(transcript, confidence = 1) {
-  if (confidence < MIN_CONFIDENCE) return null
+function parseVoice(transcript) {
   const t = normalise(transcript)
-  // Strip filler words — what remains should be just a number
-  const stripped = t.replace(/\b(uh|um|er|the|a|and|please|score|scored|is|it|just|my|i)\b/g, '').trim()
+  // Strip common filler — what remains should be just a number
+  const stripped = t.replace(/\b(uh|um|er|the|a|and|please|score|scored|is|it|just|my|i|okay|ok)\b/g, '').trim()
   const m = stripped.match(/^(\d+)$/)
   if (!m) return null
   const score = parseInt(m[1])
@@ -128,14 +125,15 @@ export default function App() {
         const result = e.results[i]
         setVoiceHeard(result[0].transcript)
 
-        if (!result.isFinal) continue
+        // Try all alternatives on final results; also try best on interim
+        const alts = result.isFinal
+          ? Array.from({ length: result.length }, (_, j) => result[j].transcript)
+          : [result[0].transcript]
 
-        // Try alternatives, best confidence first
-        for (let j = 0; j < result.length; j++) {
-          const score = parseVoice(result[j].transcript, result[j].confidence)
+        for (const transcript of alts) {
+          const score = parseVoice(transcript)
           if (score !== null) {
             const now = Date.now()
-            // Debounce — ignore same number heard within 2s
             if (score === lastScore && now - lastScoreTime < 2000) return
             lastScore = score
             lastScoreTime = now
