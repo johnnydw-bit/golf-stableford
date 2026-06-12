@@ -27,16 +27,19 @@ function normalise(transcript) {
   return t
 }
 
-// Parse "I scored [score] on [hole]" or "I scored [score] on hole [hole]"
-function parseVoice(transcript) {
+const MIN_CONFIDENCE = 0.75
+
+// Parse a single number (1-15) from transcript — returns score or null
+function parseVoice(transcript, confidence = 1) {
+  if (confidence < MIN_CONFIDENCE) return null
   const t = normalise(transcript)
-  // Grab first number as score, last number as hole — ignore whatever words are in between
-  const m = t.match(/\bscor\w+\s+(\d+)\b.*?\b(\d+)\s*$/)
+  // Strip filler words — what remains should be just a number
+  const stripped = t.replace(/\b(uh|um|er|the|a|and|please|score|scored|is|it|just|my|i)\b/g, '').trim()
+  const m = stripped.match(/^(\d+)$/)
   if (!m) return null
   const score = parseInt(m[1])
-  const hole  = parseInt(m[2])
-  if (hole < 1 || hole > 18 || score < 1 || score > 15) return null
-  return { score, hole }
+  if (score < 1 || score > 15) return null
+  return score
 }
 
 const CRED_KEY = 'ig_credentials'
@@ -60,6 +63,7 @@ export default function App() {
   const scoresRef = useRef(scores)
   const indexRef = useRef(index)
   const teeRef = useRef(tee)
+  const currentHoleRef = useRef(currentHole)
 
   const persist = (i, t, s) =>
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ index: i, tee: t, scores: s }))
@@ -68,6 +72,7 @@ export default function App() {
   useEffect(() => { scoresRef.current = scores }, [scores])
   useEffect(() => { indexRef.current = index }, [index])
   useEffect(() => { teeRef.current = tee }, [tee])
+  useEffect(() => { currentHoleRef.current = currentHole }, [currentHole])
 
   const playingHcp = index !== '' && !isNaN(Number(index))
     ? courseHandicap(Number(index), tee) : null
@@ -116,19 +121,29 @@ export default function App() {
 
     rec.onstart = () => setVoiceState('listening')
 
+    let lastScore = null
+    let lastScoreTime = 0
+
     rec.onresult = (e) => {
       for (let i = e.resultIndex; i < e.results.length; i++) {
-        const best = e.results[i][0].transcript
-        // Show live transcript so user can see mic is working
-        setVoiceHeard(best)
+        const result = e.results[i]
+        setVoiceHeard(result[0].transcript)
 
-        // Try all alternatives for a score match
-        for (let j = 0; j < e.results[i].length; j++) {
-          const parsed = parseVoice(e.results[i][j].transcript)
-          if (parsed) {
-            setScore(parsed.hole - 1, parsed.score)
+        if (!result.isFinal) continue
+
+        // Try alternatives, best confidence first
+        for (let j = 0; j < result.length; j++) {
+          const score = parseVoice(result[j].transcript, result[j].confidence)
+          if (score !== null) {
+            const now = Date.now()
+            // Debounce — ignore same number heard within 2s
+            if (score === lastScore && now - lastScoreTime < 2000) return
+            lastScore = score
+            lastScoreTime = now
+
+            setScore(currentHoleRef.current, score)
             setVoiceState('confirm')
-            setVoiceMsg(`✓ Hole ${parsed.hole} — scored ${parsed.score}`)
+            setVoiceMsg(`✓ Hole ${currentHoleRef.current + 1} — scored ${score}`)
             setVoiceHeard('')
             setTimeout(() => { setVoiceState('listening'); setVoiceHeard('') }, 2000)
             return
