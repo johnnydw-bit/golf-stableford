@@ -182,7 +182,6 @@ export default function App() {
         const onGreen = nearestGreen(latitude, longitude, 6)
         if (onGreen !== null) setCurrentHole(onGreen)
         if (nearIdx !== null) startListening()
-        else stopListening()
       },
       () => {},
       { enableHighAccuracy: true, maximumAge: 5000 }
@@ -317,7 +316,7 @@ export default function App() {
           </button>
           <button className="icon-btn" onClick={resetScores} title="Reset scores">↩</button>
           <button className="exit-btn" onClick={handleExit} title="End round">Exit</button>
-          <span className="version-tag">v1.15</span>
+          <span className="version-tag">v1.16</span>
         </div>
       </div>
 
