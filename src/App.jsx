@@ -385,7 +385,7 @@ export default function App() {
           const pts = h.pts
           const ptsClass = pts === null ? 'empty' : pts >= 4 ? 'p4' : pts === 3 ? 'p3' : pts === 2 ? 'p2' : pts === 1 ? 'p1' : 'p0'
           return (
-            <div key={h.hole} className={`hole-row ${i === 8 ? 'after-nine' : ''} ${i === currentHole ? 'active-hole' : ''}`} onClick={() => setCurrentHole(i)}>
+            <div key={h.hole} className={`hole-row ${i === 8 ? 'after-nine' : ''} ${i === currentHole ? 'active-hole' : ''}`}>
               <button className="hole-num" onClick={() => setPopup(i)}>
                 <span className="hole-num-digit">{h.hole}</span>
                 {h.shots > 0 && <span className="dot-row">{Array.from({length:h.shots}).map((_,k)=><span key={k} className="dot"/>)}</span>}
