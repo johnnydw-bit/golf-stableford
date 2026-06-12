@@ -88,6 +88,21 @@ html, body, #root {
   white-space: nowrap;
 }
 
+.hole-picker {
+  display: flex; align-items: center; gap: 2px;
+  background: rgba(255,255,255,0.15); border-radius: 0.3rem;
+  padding: 0 2px; height: 32px;
+}
+.hole-pick-btn {
+  background: none; border: none; color: white;
+  font-size: 1.1rem; line-height: 1; padding: 0 4px;
+  cursor: pointer; height: 100%;
+}
+.hole-pick-num {
+  font-size: 0.85rem; font-weight: 700; color: white;
+  min-width: 22px; text-align: center;
+}
+
 .total-box {
   display: flex; flex-direction: column; align-items: center;
   background: white; color: var(--green-800);

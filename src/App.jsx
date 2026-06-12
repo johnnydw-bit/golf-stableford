@@ -103,14 +103,13 @@ export default function App() {
     persist(index, tee, fresh)
   }
 
-  // Always-on continuous recognition — triggers on "I scored X on hole Y"
+  // Always-on continuous recognition — listens for a single number
   const startListening = useCallback(() => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SR) return
 
-    if (recognitionRef.current) {
-      try { recognitionRef.current.abort() } catch {}
-    }
+    // Reuse existing instance if still alive to avoid beep-on-restart
+    if (recognitionRef.current) return
 
     const rec = new SR()
     rec.lang = 'en-GB'
@@ -161,9 +160,10 @@ export default function App() {
       }
     }
 
-    // Auto-restart when it stops (browsers cut off after ~60s silence)
+    // Restart only if we haven't been stopped intentionally
     rec.onend = () => {
       if (recognitionRef.current === rec) {
+        recognitionRef.current = null  // allow fresh start without beep
         restartTimerRef.current = setTimeout(startListening, 300)
       }
     }
@@ -372,6 +372,11 @@ export default function App() {
           {playingHcp !== null && <span className="hcp-pill">CH {playingHcp}</span>}
         </div>
         <div className="header-right">
+          <div className="hole-picker">
+            <button className="hole-pick-btn" onClick={() => setCurrentHole(h => (h + 17) % 18)}>‹</button>
+            <span className="hole-pick-num">{currentHole + 1}</span>
+            <button className="hole-pick-btn" onClick={() => setCurrentHole(h => (h + 1) % 18)}>›</button>
+          </div>
           <button
             className={`mic-indicator ${voiceState}`}
             onClick={toggleVoice}
@@ -400,7 +405,7 @@ export default function App() {
           const pts = h.pts
           const ptsClass = pts === null ? 'empty' : pts >= 4 ? 'p4' : pts === 3 ? 'p3' : pts === 2 ? 'p2' : pts === 1 ? 'p1' : 'p0'
           return (
-            <div key={h.hole} className={`hole-row ${i === 8 ? 'after-nine' : ''} ${i === currentHole ? 'active-hole' : ''}`} onClick={() => setCurrentHole(i)}>
+            <div key={h.hole} className={`hole-row ${i === 8 ? 'after-nine' : ''} ${i === currentHole ? 'active-hole' : ''}`}>
               <button className="hole-num" onClick={() => setPopup(i)}>
                 <span className="hole-num-digit">{h.hole}</span>
                 {h.shots > 0 && <span className="dot-row">{Array.from({length:h.shots}).map((_,k)=><span key={k} className="dot"/>)}</span>}
