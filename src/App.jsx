@@ -192,8 +192,7 @@ export default function App() {
       pos => {
         const { latitude, longitude } = pos.coords
         const nearIdx = nearestGreen(latitude, longitude, 30)
-        const onGreen = nearestGreen(latitude, longitude, 6)
-        if (onGreen !== null) setCurrentHole(onGreen)
+        if (nearIdx !== null) setCurrentHole(nearIdx)
         if (!manualMicRef.current) {
           if (nearIdx !== null) startListening()
           else stopListening()
@@ -332,7 +331,7 @@ export default function App() {
           </button>
           <button className="icon-btn" onClick={resetScores} title="Reset scores">↩</button>
           <button className="exit-btn" onClick={handleExit} title="End round">Exit</button>
-          <span className="version-tag">v1.20</span>
+          <span className="version-tag">v1.21</span>
         </div>
       </div>
 
