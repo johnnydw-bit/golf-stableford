@@ -100,7 +100,11 @@ export default function App() {
   }, [])
 
   const applyTranscript = useCallback((transcript) => {
-    const t = normalise(transcript.replace(/\bplate\b/gi, 'played').replace(/\bgym\b/gi, 'jim'))
+    const t = normalise(transcript
+      .replace(/\bplate\b/gi, 'played')
+      .replace(/\bgym\b/gi, 'jim')
+      .replace(/\bcrisp\b/gi, 'chris')
+    )
     const regex = /\b([1-4])\s+played\s+(\d+)\b/g
     const matches = [...t.matchAll(regex)]
     if (matches.length) {
@@ -323,7 +327,7 @@ export default function App() {
         <button className="sc-setup" onClick={simulateTasker}>Test</button>
         <button className="sc-done" onClick={() => { stopListening(); setPhase('finished') }}>Done</button>
         <button className="sc-setup" onClick={() => { stopListening(); setPhase('setup') }}>Setup</button>
-        <span className="version-tag">v1.35</span>
+        <span className="version-tag">v1.36</span>
       </div>
 
       {voiceMsg && <div className={`voice-banner ${voiceMsg.startsWith('✓') ? 'confirm' : 'listening'}`}>{voiceMsg}</div>}
