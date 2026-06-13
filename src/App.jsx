@@ -108,7 +108,7 @@ export default function App() {
     const SGL = window.SpeechGrammarList || window.webkitSpeechGrammarList
     const rec = new SR()
     rec.lang = 'en-US'
-    rec.continuous = true
+    rec.continuous = false
     rec.interimResults = false
     rec.maxAlternatives = 5
     if (SGL) {
@@ -348,7 +348,7 @@ export default function App() {
         </button>
         <button className="sc-done" onClick={() => { stopListening(); setPhase('finished') }}>Done</button>
         <button className="sc-setup" onClick={() => { stopListening(); setPhase('setup') }}>Setup</button>
-        <span className="version-tag">v1.29</span>
+        <span className="version-tag">v1.30</span>
       </div>
 
       {voiceState === 'confirm'   && <div className="voice-banner confirm">{voiceMsg}</div>}
