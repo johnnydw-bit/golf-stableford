@@ -23,18 +23,20 @@ function parseScore(transcript) {
   return nums.length ? nums[nums.length - 1] : null
 }
 
-// "one four strokes" → player 0, score 4
-// "four strokes" → player 0, score 4 (fallback)
+// "one played four" → player 0, score 4
+// "four strokes" alone → player 0, score 4 (fallback)
 function parseVoice(transcript) {
-  const t = normalise(transcript.replace(/\bstrokes?\b/gi, '').replace(/\bshots?\b/gi, '').trim())
-  const nums = (t.match(/\d+/g) || []).map(Number).filter(n => n >= 1 && n <= 18)
-  if (!nums.length) return null
-  if (nums.length >= 2 && nums[0] >= 1 && nums[0] <= 4) {
-    const score = nums.slice(1).find(n => n >= 1 && n <= 15)
-    if (score !== undefined) return { playerIdx: nums[0] - 1, score }
+  const t = normalise(transcript)
+  // Look for "[player] played [score]" pattern
+  const playedMatch = t.match(/\b([1-4])\s+played\s+(\d+)\b/)
+  if (playedMatch) {
+    const playerIdx = parseInt(playedMatch[1]) - 1
+    const score = parseInt(playedMatch[2])
+    if (score >= 1 && score <= 15) return { playerIdx, score }
   }
-  const score = nums.find(n => n >= 1 && n <= 15)
-  return score !== undefined ? { playerIdx: 0, score } : null
+  // Fallback: just a score number → player 0
+  const score = parseScore(transcript)
+  return score !== null ? { playerIdx: 0, score } : null
 }
 
 const SETUP_KEY  = 'golf_setup_4p'
@@ -111,10 +113,10 @@ export default function App() {
     rec.maxAlternatives = 5
     if (SGL) {
       const grammar = '#JSGF V1.0; grammar score; public <score> = ' +
-        'one two | one three | one four | one five | one six | one seven | one eight | one nine | one ten | ' +
-        'two two | two three | two four | two five | two six | two seven | two eight | two nine | two ten | ' +
-        'three two | three three | three four | three five | three six | three seven | three eight | three nine | three ten | ' +
-        'four two | four three | four four | four five | four six | four seven | four eight | four nine | four ten | ' +
+        'one played one | one played two | one played three | one played four | one played five | one played six | one played seven | one played eight | one played nine | one played ten | ' +
+        'two played one | two played two | two played three | two played four | two played five | two played six | two played seven | two played eight | two played nine | two played ten | ' +
+        'three played one | three played two | three played three | three played four | three played five | three played six | three played seven | three played eight | three played nine | three played ten | ' +
+        'four played one | four played two | four played three | four played four | four played five | four played six | four played seven | four played eight | four played nine | four played ten | ' +
         'one | two | three | four | five | six | seven | eight | nine | ten | ' +
         'eleven | twelve | thirteen | fourteen | fifteen | ' +
         'stroke | strokes | shots ;'
@@ -346,13 +348,13 @@ export default function App() {
         </button>
         <button className="sc-done" onClick={() => { stopListening(); setPhase('finished') }}>Done</button>
         <button className="sc-setup" onClick={() => { stopListening(); setPhase('setup') }}>Setup</button>
-        <span className="version-tag">v1.26</span>
+        <span className="version-tag">v1.27</span>
       </div>
 
       {voiceState === 'confirm'   && <div className="voice-banner confirm">{voiceMsg}</div>}
       {voiceState === 'listening' && (
         <div className="voice-banner listening">
-          {voiceHeard ? `"${voiceHeard}"` : 'Say: [1-4] N strokes'}
+          {voiceHeard ? `"${voiceHeard}"` : 'Say: "1 played 4"'}
         </div>
       )}
 
