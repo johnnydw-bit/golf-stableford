@@ -67,6 +67,7 @@ export default function App() {
   const lastScoreRef      = useRef(null)
   const lastScoreTimeRef  = useRef(0)
   const setupRef          = useRef(setup)
+  const warmStreamRef     = useRef(null)
 
   useEffect(() => { currentHoleRef.current = currentHole }, [currentHole])
   useEffect(() => { setupRef.current = setup }, [setup])
@@ -153,7 +154,7 @@ export default function App() {
     rec.onend = () => {
       if (recognitionRef.current === rec) {
         recognitionRef.current = null
-        restartTimerRef.current = setTimeout(startListening, 300)
+        restartTimerRef.current = setTimeout(startListening, 100)
       }
     }
     try { rec.start() } catch {}
@@ -171,6 +172,14 @@ export default function App() {
     if (voiceState === 'off') { manualMicRef.current = true; startListening() }
     else { manualMicRef.current = false; stopListening() }
   }
+
+  // Keep mic pipeline warm to reduce restart beeps
+  useEffect(() => {
+    navigator.mediaDevices?.getUserMedia({ audio: true })
+      .then(stream => { warmStreamRef.current = stream })
+      .catch(() => {})
+    return () => warmStreamRef.current?.getTracks().forEach(t => t.stop())
+  }, [])
 
   // Wake lock
   useEffect(() => {
@@ -348,7 +357,7 @@ export default function App() {
         </button>
         <button className="sc-done" onClick={() => { stopListening(); setPhase('finished') }}>Done</button>
         <button className="sc-setup" onClick={() => { stopListening(); setPhase('setup') }}>Setup</button>
-        <span className="version-tag">v1.23</span>
+        <span className="version-tag">v1.24</span>
       </div>
 
       {voiceState === 'confirm'   && <div className="voice-banner confirm">{voiceMsg}</div>}
