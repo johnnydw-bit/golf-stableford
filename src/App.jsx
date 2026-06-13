@@ -5,7 +5,7 @@ const WORD_NUMS = {
   one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9,
   ten:10, eleven:11, twelve:12, thirteen:13, fourteen:14, fifteen:15,
   sixteen:16, seventeen:17, eighteen:18,
-  won:1, 'to':2, too:2, 'free':3, fore:4, 'for':4, foreign:4,
+  won:1, 'to':2, too:2, who:2, 'free':3, fore:4, 'for':4, foreign:4,
   'sex':6, sick:6, ate:8, niner:9,
 }
 const WORD_NUMS_SORTED = Object.entries(WORD_NUMS).sort((a, b) => b[0].length - a[0].length)
@@ -193,7 +193,7 @@ export default function App() {
         const { latitude, longitude } = pos.coords
         const nearIdx = nearestGreen(latitude, longitude, 30)
         if (nearIdx !== null) setCurrentHole(nearIdx)
-        if (!manualMicRef.current) { if (nearIdx !== null) startListening(); else stopListening() }
+        if (!manualMicRef.current && nearIdx !== null) startListening()
       },
       () => {},
       { enableHighAccuracy: true, maximumAge: 5000 }
@@ -348,7 +348,7 @@ export default function App() {
         </button>
         <button className="sc-done" onClick={() => { stopListening(); setPhase('finished') }}>Done</button>
         <button className="sc-setup" onClick={() => { stopListening(); setPhase('setup') }}>Setup</button>
-        <span className="version-tag">v1.27</span>
+        <span className="version-tag">v1.28</span>
       </div>
 
       {voiceState === 'confirm'   && <div className="voice-banner confirm">{voiceMsg}</div>}
