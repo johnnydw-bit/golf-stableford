@@ -100,6 +100,7 @@ export default function App() {
   }, [])
 
   const applyTranscript = useCallback((transcript) => {
+    setVoiceHeard(transcript)
     const cleaned = transcript
       .replace(/\bplate\b/gi, 'played')
       .replace(/\bgym\b/gi, 'jim')
@@ -333,7 +334,7 @@ export default function App() {
         <button className="sc-setup" onClick={simulateTasker}>Test</button>
         <button className="sc-done" onClick={() => { stopListening(); setPhase('finished') }}>Done</button>
         <button className="sc-setup" onClick={() => { stopListening(); setPhase('setup') }}>Setup</button>
-        <span className="version-tag">v1.38</span>
+        <span className="version-tag">v1.39</span>
       </div>
 
       {voiceMsg && <div className={`voice-banner ${voiceMsg.startsWith('✓') ? 'confirm' : 'listening'}`}>{voiceMsg}</div>}
