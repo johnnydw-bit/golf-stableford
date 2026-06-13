@@ -23,17 +23,18 @@ function parseScore(transcript) {
   return nums.length ? nums[nums.length - 1] : null
 }
 
-function parseVoice(transcript, players) {
-  const tLow = transcript.toLowerCase()
-  for (let i = 0; i < players.length; i++) {
-    const name = players[i].name.trim().toLowerCase()
-    if (name && tLow.includes(name)) {
-      const score = parseScore(transcript)
-      if (score !== null) return { playerIdx: i, score }
-    }
+// "one four strokes" → player 0, score 4
+// "four strokes" → player 0, score 4 (fallback)
+function parseVoice(transcript) {
+  const t = normalise(transcript.replace(/\bstrokes?\b/gi, '').replace(/\bshots?\b/gi, '').trim())
+  const nums = (t.match(/\d+/g) || []).map(Number).filter(n => n >= 1 && n <= 18)
+  if (!nums.length) return null
+  if (nums.length >= 2 && nums[0] >= 1 && nums[0] <= 4) {
+    const score = nums.slice(1).find(n => n >= 1 && n <= 15)
+    if (score !== undefined) return { playerIdx: nums[0] - 1, score }
   }
-  const score = parseScore(transcript)
-  return score !== null ? { playerIdx: 0, score } : null
+  const score = nums.find(n => n >= 1 && n <= 15)
+  return score !== undefined ? { playerIdx: 0, score } : null
 }
 
 const SETUP_KEY  = 'golf_setup_4p'
@@ -109,16 +110,13 @@ export default function App() {
     rec.interimResults = true
     rec.maxAlternatives = 5
     if (SGL) {
-      const names = setupRef.current.players
-        .map(p => p.name.trim().toLowerCase()).filter(Boolean)
-      const nameGrammar = names.length ? names.join(' | ') + ' | ' : ''
       const grammar = '#JSGF V1.0; grammar score; public <score> = ' +
-        nameGrammar +
+        'one two | one three | one four | one five | one six | one seven | one eight | one nine | one ten | ' +
+        'two two | two three | two four | two five | two six | two seven | two eight | two nine | two ten | ' +
+        'three two | three three | three four | three five | three six | three seven | three eight | three nine | three ten | ' +
+        'four two | four three | four four | four five | four six | four seven | four eight | four nine | four ten | ' +
         'one | two | three | four | five | six | seven | eight | nine | ten | ' +
         'eleven | twelve | thirteen | fourteen | fifteen | ' +
-        'zero one | zero two | zero three | zero four | zero five | ' +
-        'zero six | zero seven | zero eight | zero nine | zero ten | ' +
-        'zero eleven | zero twelve | zero thirteen | zero fourteen | zero fifteen | ' +
         'stroke | strokes | shots ;'
       const list = new SGL(); list.addFromString(grammar, 1); rec.grammars = list
     }
@@ -130,7 +128,7 @@ export default function App() {
         setVoiceHeard(result[0].transcript)
         const alts = Array.from({ length: result.length }, (_, j) => result[j].transcript)
         for (const transcript of alts) {
-          const parsed = parseVoice(transcript, setupRef.current.players)
+          const parsed = parseVoice(transcript)
           if (parsed) {
             const { playerIdx, score } = parsed
             const key = `${playerIdx}-${score}`
@@ -348,13 +346,13 @@ export default function App() {
         </button>
         <button className="sc-done" onClick={() => { stopListening(); setPhase('finished') }}>Done</button>
         <button className="sc-setup" onClick={() => { stopListening(); setPhase('setup') }}>Setup</button>
-        <span className="version-tag">v1.25</span>
+        <span className="version-tag">v1.26</span>
       </div>
 
       {voiceState === 'confirm'   && <div className="voice-banner confirm">{voiceMsg}</div>}
       {voiceState === 'listening' && (
         <div className="voice-banner listening">
-          {voiceHeard ? `"${voiceHeard}"` : 'Say: [name] N strokes'}
+          {voiceHeard ? `"${voiceHeard}"` : 'Say: [1-4] N strokes'}
         </div>
       )}
 
