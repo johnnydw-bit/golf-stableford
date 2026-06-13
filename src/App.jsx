@@ -100,25 +100,25 @@ export default function App() {
   }, [])
 
   const applyTranscript = useCallback((transcript) => {
-    const alts = [transcript]
-    for (const t of alts) {
-      const parsed = parseVoice(t)
-      if (parsed) {
-        const { playerIdx, score } = parsed
-        const key = `${playerIdx}-${score}`
-        const now = Date.now()
-        if (key === lastScoreRef.current && now - lastScoreTimeRef.current < 2000) return
-        lastScoreRef.current = key
-        lastScoreTimeRef.current = now
-        setPlayerScore(currentHoleRef.current, playerIdx, score)
-        const name = setupRef.current.players[playerIdx].name || `P${playerIdx + 1}`
-        setVoiceMsg(`✓ ${name} — hole ${currentHoleRef.current + 1} scored ${score}`)
-        setVoiceHeard(transcript)
-        return
-      }
+    const t = normalise(transcript)
+    const regex = /\b([1-4])\s+played\s+(\d+)\b/g
+    const matches = [...t.matchAll(regex)]
+    if (matches.length) {
+      const names = []
+      matches.forEach(m => {
+        const playerIdx = parseInt(m[1]) - 1
+        const score = parseInt(m[2])
+        if (score >= 1 && score <= 15) {
+          setPlayerScore(currentHoleRef.current, playerIdx, score)
+          names.push(`${setupRef.current.players[playerIdx].name || `P${playerIdx + 1}`} ${score}`)
+        }
+      })
+      setVoiceMsg(`✓ ${names.join(' · ')}`)
+      setVoiceHeard(transcript)
+    } else {
+      setVoiceHeard(transcript)
+      setVoiceMsg('? not recognised')
     }
-    setVoiceHeard(transcript)
-    setVoiceMsg('? not recognised')
   }, [setPlayerScore])
 
   // Wake lock
@@ -323,7 +323,7 @@ export default function App() {
         <button className="sc-setup" onClick={simulateTasker}>Test</button>
         <button className="sc-done" onClick={() => { stopListening(); setPhase('finished') }}>Done</button>
         <button className="sc-setup" onClick={() => { stopListening(); setPhase('setup') }}>Setup</button>
-        <span className="version-tag">v1.33</span>
+        <span className="version-tag">v1.34</span>
       </div>
 
       {voiceMsg && <div className={`voice-banner ${voiceMsg.startsWith('✓') ? 'confirm' : 'listening'}`}>{voiceMsg}</div>}
