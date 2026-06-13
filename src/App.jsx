@@ -100,29 +100,35 @@ export default function App() {
   }, [])
 
   const applyTranscript = useCallback((transcript) => {
-    const t = normalise(transcript
+    const cleaned = transcript
       .replace(/\bplate\b/gi, 'played')
       .replace(/\bgym\b/gi, 'jim')
       .replace(/\bcrisp\b/gi, 'chris')
-    )
-    const regex = /\b([1-4])\s+played\s+(\d+)\b/g
-    const matches = [...t.matchAll(regex)]
-    if (matches.length) {
-      const names = []
-      matches.forEach(m => {
-        const playerIdx = parseInt(m[1]) - 1
-        const score = parseInt(m[2])
+    const t = normalise(cleaned)
+    const players = setupRef.current.players
+    const confirmed = []
+
+    players.forEach((p, pi) => {
+      const name = p.name.trim().toLowerCase()
+      if (!name) return
+      // match "name played N" or "name N"
+      const re = new RegExp(`\\b${name}\\s+(?:played\\s+)?(\\d+)\\b`, 'i')
+      const m = t.match(re)
+      if (m) {
+        const score = parseInt(m[1])
         if (score >= 1 && score <= 15) {
-          setPlayerScore(currentHoleRef.current, playerIdx, score)
-          names.push(`${setupRef.current.players[playerIdx].name || `P${playerIdx + 1}`} ${score}`)
+          setPlayerScore(currentHoleRef.current, pi, score)
+          confirmed.push(`${p.name} ${score}`)
         }
-      })
-      setVoiceMsg(`✓ ${names.join(' · ')}`)
-      setVoiceHeard(transcript)
+      }
+    })
+
+    if (confirmed.length) {
+      setVoiceMsg(`✓ ${confirmed.join(' · ')}`)
     } else {
-      setVoiceHeard(transcript)
       setVoiceMsg('? not recognised')
     }
+    setVoiceHeard(cleaned)
   }, [setPlayerScore])
 
   // Wake lock
@@ -327,7 +333,7 @@ export default function App() {
         <button className="sc-setup" onClick={simulateTasker}>Test</button>
         <button className="sc-done" onClick={() => { stopListening(); setPhase('finished') }}>Done</button>
         <button className="sc-setup" onClick={() => { stopListening(); setPhase('setup') }}>Setup</button>
-        <span className="version-tag">v1.36</span>
+        <span className="version-tag">v1.37</span>
       </div>
 
       {voiceMsg && <div className={`voice-banner ${voiceMsg.startsWith('✓') ? 'confirm' : 'listening'}`}>{voiceMsg}</div>}
