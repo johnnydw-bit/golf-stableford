@@ -132,6 +132,26 @@ export default function App() {
     return () => { document.removeEventListener('visibilitychange', reacquire); wakeLockRef.current?.release() }
   }, [])
 
+  // Simulate Tasker: one-shot listen then POST to relay
+  const simulateTasker = useCallback(() => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!SR) return
+    const rec = new SR()
+    rec.lang = 'en-US'
+    rec.continuous = false
+    rec.interimResults = false
+    rec.maxAlternatives = 3
+    rec.onresult = async (e) => {
+      const transcript = e.results[0][0].transcript
+      await fetch('/api/voice-relay', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transcript }),
+      })
+    }
+    rec.start()
+  }, [])
+
   // GPS — hole switching only, no mic control
   useEffect(() => {
     if (!navigator.geolocation) return
@@ -300,9 +320,10 @@ export default function App() {
           <button onPointerDown={() => setCurrentHole(h => (h + 1) % 18)}>›</button>
         </div>
         <span className="relay-dot" title="Tasker relay active" />
+        <button className="sc-setup" onClick={simulateTasker}>Test</button>
         <button className="sc-done" onClick={() => { stopListening(); setPhase('finished') }}>Done</button>
         <button className="sc-setup" onClick={() => { stopListening(); setPhase('setup') }}>Setup</button>
-        <span className="version-tag">v1.32</span>
+        <span className="version-tag">v1.33</span>
       </div>
 
       {voiceMsg && <div className={`voice-banner ${voiceMsg.startsWith('✓') ? 'confirm' : 'listening'}`}>{voiceMsg}</div>}
