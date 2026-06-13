@@ -104,6 +104,8 @@ export default function App() {
     setTimeout(() => setVoiceHeard(transcript), 50)
     const cleaned = transcript
       .replace(/\bplate\b/gi, 'played')
+      .replace(/\bblade\b/gi, 'played')
+      .replace(/\bplayed\b/gi, 'played')
       .replace(/\bgym\b/gi, 'jim')
       .replace(/\bcrisp\b/gi, 'chris')
     const t = normalise(cleaned)
@@ -335,7 +337,7 @@ export default function App() {
         <button className="sc-setup" onClick={simulateTasker}>Test</button>
         <button className="sc-done" onClick={() => { stopListening(); setPhase('finished') }}>Done</button>
         <button className="sc-setup" onClick={() => { stopListening(); setPhase('setup') }}>Setup</button>
-        <span className="version-tag">v1.40</span>
+        <span className="version-tag">v1.41</span>
       </div>
 
       {voiceMsg && <div className={`voice-banner ${voiceMsg.startsWith('✓') ? 'confirm' : 'listening'}`}>{voiceMsg}</div>}
