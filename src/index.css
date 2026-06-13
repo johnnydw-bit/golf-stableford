@@ -130,6 +130,13 @@ html, body, #root {
   font-size: 0.8rem; cursor: pointer;
 }
 .version-tag { font-size: 0.6rem; color: rgba(255,255,255,0.35); }
+.relay-dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: #4ade80;
+  box-shadow: 0 0 0 3px rgba(74,222,128,0.3);
+  animation: breathe 2s ease-in-out infinite;
+  display: inline-block;
+}
 
 /* ── Voice banner ── */
 .voice-banner {

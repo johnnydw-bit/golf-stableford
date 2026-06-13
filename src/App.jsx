@@ -58,18 +58,15 @@ export default function App() {
   const [setup, setSetup]   = useState(() => load(SETUP_KEY) ?? DEFAULT_SETUP())
   const [scores, setScores] = useState(() => load(SCORES_KEY) ?? EMPTY_SCORES())
   const [currentHole, setCurrentHole] = useState(0)
-  const [voiceState, setVoiceState]   = useState('off')
-  const [voiceMsg, setVoiceMsg]       = useState('')
-  const [voiceHeard, setVoiceHeard]   = useState('')
+  const [voiceMsg, setVoiceMsg]   = useState('')
+  const [voiceHeard, setVoiceHeard] = useState('')
 
-  const recognitionRef    = useRef(null)
-  const restartTimerRef   = useRef(null)
-  const currentHoleRef    = useRef(0)
-  const wakeLockRef       = useRef(null)
-  const manualMicRef      = useRef(false)
-  const lastScoreRef      = useRef(null)
-  const lastScoreTimeRef  = useRef(0)
-  const setupRef          = useRef(setup)
+  const currentHoleRef   = useRef(0)
+  const wakeLockRef      = useRef(null)
+  const lastScoreRef     = useRef(null)
+  const lastScoreTimeRef = useRef(0)
+  const setupRef         = useRef(setup)
+  const pollRef          = useRef(null)
 
   useEffect(() => { currentHoleRef.current = currentHole }, [currentHole])
   useEffect(() => { setupRef.current = setup }, [setup])
@@ -102,75 +99,27 @@ export default function App() {
     })
   }, [])
 
-  const startListening = useCallback(() => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SR || recognitionRef.current) return
-    const SGL = window.SpeechGrammarList || window.webkitSpeechGrammarList
-    const rec = new SR()
-    rec.lang = 'en-US'
-    rec.continuous = true
-    rec.interimResults = true
-    rec.maxAlternatives = 5
-    if (SGL) {
-      const grammar = '#JSGF V1.0; grammar score; public <score> = ' +
-        'one played one | one played two | one played three | one played four | one played five | one played six | one played seven | one played eight | one played nine | one played ten | ' +
-        'two played one | two played two | two played three | two played four | two played five | two played six | two played seven | two played eight | two played nine | two played ten | ' +
-        'three played one | three played two | three played three | three played four | three played five | three played six | three played seven | three played eight | three played nine | three played ten | ' +
-        'four played one | four played two | four played three | four played four | four played five | four played six | four played seven | four played eight | four played nine | four played ten | ' +
-        'one | two | three | four | five | six | seven | eight | nine | ten | ' +
-        'eleven | twelve | thirteen | fourteen | fifteen | ' +
-        'stroke | strokes | shots ;'
-      const list = new SGL(); list.addFromString(grammar, 1); rec.grammars = list
-    }
-    recognitionRef.current = rec
-    rec.onstart = () => setVoiceState('listening')
-    rec.onresult = (e) => {
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const result = e.results[i]
-        setVoiceHeard(result[0].transcript)
-        const alts = Array.from({ length: result.length }, (_, j) => result[j].transcript)
-        for (const transcript of alts) {
-          const parsed = parseVoice(transcript)
-          if (parsed) {
-            const { playerIdx, score } = parsed
-            const key = `${playerIdx}-${score}`
-            const now = Date.now()
-            if (key === lastScoreRef.current && now - lastScoreTimeRef.current < 2000) return
-            lastScoreRef.current = key
-            lastScoreTimeRef.current = now
-            setPlayerScore(currentHoleRef.current, playerIdx, score)
-            const name = setupRef.current.players[playerIdx].name || `P${playerIdx + 1}`
-            setVoiceState('confirm')
-            setVoiceMsg(`✓ ${name} — hole ${currentHoleRef.current + 1} scored ${score}`)
-            setVoiceHeard('')
-            setTimeout(() => { setVoiceState('listening'); setVoiceHeard('') }, 2000)
-            return
-          }
-        }
+  const applyTranscript = useCallback((transcript) => {
+    const alts = [transcript]
+    for (const t of alts) {
+      const parsed = parseVoice(t)
+      if (parsed) {
+        const { playerIdx, score } = parsed
+        const key = `${playerIdx}-${score}`
+        const now = Date.now()
+        if (key === lastScoreRef.current && now - lastScoreTimeRef.current < 2000) return
+        lastScoreRef.current = key
+        lastScoreTimeRef.current = now
+        setPlayerScore(currentHoleRef.current, playerIdx, score)
+        const name = setupRef.current.players[playerIdx].name || `P${playerIdx + 1}`
+        setVoiceMsg(`✓ ${name} — hole ${currentHoleRef.current + 1} scored ${score}`)
+        setVoiceHeard(transcript)
+        return
       }
     }
-    rec.onerror = (e) => { if (e.error === 'not-allowed') setVoiceState('off') }
-    rec.onend = () => {
-      if (recognitionRef.current === rec) {
-        recognitionRef.current = null
-        restartTimerRef.current = setTimeout(startListening, 100)
-      }
-    }
-    try { rec.start() } catch {}
+    setVoiceHeard(transcript)
+    setVoiceMsg('? not recognised')
   }, [setPlayerScore])
-
-  const stopListening = useCallback(() => {
-    clearTimeout(restartTimerRef.current)
-    const rec = recognitionRef.current
-    recognitionRef.current = null
-    try { rec?.abort() } catch {}
-    setVoiceState('off'); setVoiceMsg(''); setVoiceHeard('')
-  }, [])
-
-  const toggleVoice = () => {
-    if (voiceState === 'off') { manualMicRef.current = true; startListening() }
-    else { manualMicRef.current = false; stopListening() }
-  }
 
   // Wake lock
   useEffect(() => {
@@ -183,9 +132,7 @@ export default function App() {
     return () => { document.removeEventListener('visibilitychange', reacquire); wakeLockRef.current?.release() }
   }, [])
 
-  useEffect(() => () => stopListening(), [stopListening])
-
-  // GPS
+  // GPS — hole switching only, no mic control
   useEffect(() => {
     if (!navigator.geolocation) return
     const watchId = navigator.geolocation.watchPosition(
@@ -193,26 +140,35 @@ export default function App() {
         const { latitude, longitude } = pos.coords
         const nearIdx = nearestGreen(latitude, longitude, 30)
         if (nearIdx !== null) setCurrentHole(nearIdx)
-        if (!manualMicRef.current && nearIdx !== null) startListening()
       },
       () => {},
       { enableHighAccuracy: true, maximumAge: 5000 }
     )
     return () => navigator.geolocation.clearWatch(watchId)
-  }, [startListening, stopListening])
+  }, [])
 
-  // BT clicker — volume up: +1 for player 0, volume down: next hole
+  // Poll relay endpoint every second
+  useEffect(() => {
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch('/api/voice-relay')
+        const data = await res.json()
+        if (data.transcript) applyTranscript(data.transcript)
+      } catch {}
+    }, 1000)
+    return () => clearInterval(pollRef.current)
+  }, [applyTranscript])
+
+  // BT clicker — next hole only (Tasker handles scoring)
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key === 'AudioVolumeUp' || e.key === 'VolumeUp') {
-        e.preventDefault(); changeScore(currentHoleRef.current, 0, +1)
-      } else if (e.key === 'AudioVolumeDown' || e.key === 'VolumeDown') {
+      if (e.key === 'AudioVolumeDown' || e.key === 'VolumeDown') {
         e.preventDefault(); setCurrentHole(h => (h + 1) % 18)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [changeScore])
+  }, [])
 
   // Per-hole data
   const holeData = holes.map((h, hi) => {
@@ -343,20 +299,14 @@ export default function App() {
           <span>{currentHole + 1}</span>
           <button onPointerDown={() => setCurrentHole(h => (h + 1) % 18)}>›</button>
         </div>
-        <button className={`mic-indicator ${voiceState}`} onClick={toggleVoice} title="Toggle voice">
-          <span className="mic-dot" />
-        </button>
+        <span className="relay-dot" title="Tasker relay active" />
         <button className="sc-done" onClick={() => { stopListening(); setPhase('finished') }}>Done</button>
         <button className="sc-setup" onClick={() => { stopListening(); setPhase('setup') }}>Setup</button>
-        <span className="version-tag">v1.31</span>
+        <span className="version-tag">v1.32</span>
       </div>
 
-      {voiceState === 'confirm'   && <div className="voice-banner confirm">{voiceMsg}</div>}
-      {voiceState === 'listening' && (
-        <div className="voice-banner listening">
-          {voiceHeard ? `"${voiceHeard}"` : 'Say: "1 played 4"'}
-        </div>
-      )}
+      {voiceMsg && <div className={`voice-banner ${voiceMsg.startsWith('✓') ? 'confirm' : 'listening'}`}>{voiceMsg}</div>}
+      {voiceHeard && !voiceMsg.startsWith('✓') && <div className="voice-banner listening">"{voiceHeard}"</div>}
 
       <div className="sc-scroll">
         <table className="sc-table">
