@@ -333,11 +333,11 @@ export default function App() {
         <button className="sc-setup" onClick={simulateTasker}>Test</button>
         <button className="sc-done" onClick={() => { stopListening(); setPhase('finished') }}>Done</button>
         <button className="sc-setup" onClick={() => { stopListening(); setPhase('setup') }}>Setup</button>
-        <span className="version-tag">v1.37</span>
+        <span className="version-tag">v1.38</span>
       </div>
 
       {voiceMsg && <div className={`voice-banner ${voiceMsg.startsWith('✓') ? 'confirm' : 'listening'}`}>{voiceMsg}</div>}
-      {voiceHeard && !voiceMsg.startsWith('✓') && <div className="voice-banner listening">"{voiceHeard}"</div>}
+      {voiceHeard && <div className="voice-banner debug">RAW: "{voiceHeard}"</div>}
 
       <div className="sc-scroll">
         <table className="sc-table">

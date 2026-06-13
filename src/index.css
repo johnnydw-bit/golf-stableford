@@ -145,6 +145,7 @@ html, body, #root {
 }
 .voice-banner.listening { background: rgba(22,101,52,0.07); color: #4b5563; }
 .voice-banner.confirm   { background: #dcfce7; color: #166534; }
+.voice-banner.debug     { background: #fef3c7; color: #92400e; font-size: 0.7rem; word-break: break-all; }
 
 /* ── Scoring table ── */
 .sc-scroll { flex: 1; overflow-y: auto; }
