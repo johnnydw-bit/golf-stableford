@@ -1,10 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { holes, tees, courseHandicap, shotsOnHole, stablefordPoints, nearestGreen } from './courseData.js'
 
-const STORAGE_KEY = 'golf_round'
-function loadSaved() { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) } catch { return null } }
-const saved = loadSaved()
-
 const WORD_NUMS = {
   one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9,
   ten:10, eleven:11, twelve:12, thirteen:13, fourteen:14, fifteen:15,
@@ -14,83 +10,98 @@ const WORD_NUMS = {
 }
 const WORD_NUMS_SORTED = Object.entries(WORD_NUMS).sort((a, b) => b[0].length - a[0].length)
 
-function normalise(transcript) {
-  let t = transcript.toLowerCase().trim()
-  for (const [word, val] of WORD_NUMS_SORTED) {
+function normalise(t) {
+  t = t.toLowerCase().trim()
+  for (const [word, val] of WORD_NUMS_SORTED)
     t = t.replace(new RegExp(`\\b${word}\\b`, 'g'), String(val))
-  }
   return t
 }
 
-function parseVoice(transcript) {
+function parseScore(transcript) {
   const t = normalise(transcript + ' strokes')
   const nums = (t.match(/\d+/g) || []).map(Number).filter(n => n >= 1 && n <= 15)
-  if (!nums.length) return null
-  return nums[nums.length - 1]
+  return nums.length ? nums[nums.length - 1] : null
 }
 
-const CRED_KEY = 'ig_credentials'
-function loadCreds() { try { return JSON.parse(localStorage.getItem(CRED_KEY)) ?? {} } catch { return {} } }
+function parseVoice(transcript, players) {
+  const tLow = transcript.toLowerCase()
+  for (let i = 0; i < players.length; i++) {
+    const name = players[i].name.trim().toLowerCase()
+    if (name && tLow.includes(name)) {
+      const score = parseScore(transcript)
+      if (score !== null) return { playerIdx: i, score }
+    }
+  }
+  const score = parseScore(transcript)
+  return score !== null ? { playerIdx: 0, score } : null
+}
+
+const SETUP_KEY  = 'golf_setup_4p'
+const SCORES_KEY = 'golf_scores_4p'
+const CRED_KEY   = 'ig_credentials'
+
+const load = (key) => { try { return JSON.parse(localStorage.getItem(key)) } catch { return null } }
+const save = (key, val) => localStorage.setItem(key, JSON.stringify(val))
+
+const EMPTY_SCORES = () => Array(18).fill(null).map(() => Array(4).fill(null))
+const DEFAULT_SETUP = () => ({
+  matchType: 'individual',
+  tee: 'yellow',
+  players: Array(4).fill(null).map(() => ({ name: '', index: '' })),
+})
 
 export default function App() {
-  const [index, setIndex] = useState(saved?.index ?? '')
-  const [tee, setTee] = useState(saved?.tee ?? 'yellow')
-  const [scores, setScores] = useState(saved?.scores ?? Array(18).fill(null))
-  const [finished, setFinished] = useState(null)
-  const savedCreds = loadCreds()
-  const [memberId, setMemberId] = useState(savedCreds.memberId ?? '')
-  const [pin, setPin] = useState(savedCreds.pin ?? '')
-  const [popup, setPopup] = useState(null)
+  const [phase, setPhase]   = useState(() => load(SETUP_KEY) ? 'scoring' : 'setup')
+  const [setup, setSetup]   = useState(() => load(SETUP_KEY) ?? DEFAULT_SETUP())
+  const [scores, setScores] = useState(() => load(SCORES_KEY) ?? EMPTY_SCORES())
   const [currentHole, setCurrentHole] = useState(0)
-  const [voiceState, setVoiceState] = useState('off') // 'off' | 'listening' | 'confirm'
-  const [voiceMsg, setVoiceMsg] = useState('')
-  const [voiceHeard, setVoiceHeard] = useState('')
-  const recognitionRef = useRef(null)
-  const restartTimerRef = useRef(null)
-  const currentHoleRef = useRef(currentHole)
-  const wakeLockRef = useRef(null)
-  const manualMicRef = useRef(false)
-  const lastScoreRef = useRef(null)
-  const lastScoreTimeRef = useRef(0)
+  const [voiceState, setVoiceState]   = useState('off')
+  const [voiceMsg, setVoiceMsg]       = useState('')
+  const [voiceHeard, setVoiceHeard]   = useState('')
+
+  const recognitionRef    = useRef(null)
+  const restartTimerRef   = useRef(null)
+  const currentHoleRef    = useRef(0)
+  const wakeLockRef       = useRef(null)
+  const manualMicRef      = useRef(false)
+  const lastScoreRef      = useRef(null)
+  const lastScoreTimeRef  = useRef(0)
+  const setupRef          = useRef(setup)
 
   useEffect(() => { currentHoleRef.current = currentHole }, [currentHole])
+  useEffect(() => { setupRef.current = setup }, [setup])
 
-  const persist = (i, t, s) =>
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ index: i, tee: t, scores: s }))
+  // Computed handicaps
+  const playingHcps = setup.players.map(p => {
+    const idx = Number(p.index)
+    return p.index !== '' && !isNaN(idx) ? courseHandicap(idx, setup.tee) : null
+  })
+  const activeHcps = setup.matchType === '4bb'
+    ? playingHcps.map(h => h !== null ? Math.round(h * 0.75) : null)
+    : playingHcps
 
-  const playingHcp = index !== '' && !isNaN(Number(index))
-    ? courseHandicap(Number(index), tee) : null
-
-  const changeScore = useCallback((i, delta) => {
+  const changeScore = useCallback((hole, pi, delta) => {
     setScores(prev => {
-      const next = [...prev]
-      const cur = next[i]
-      const par = holes[i].par
-      next[i] = cur === null ? par : Math.min(Math.max(cur + delta, 1), 15)
-      persist(index, tee, next)
+      const next = prev.map(r => [...r])
+      const cur = next[hole][pi]
+      next[hole][pi] = cur === null ? holes[hole].par : Math.min(Math.max(cur + delta, 1), 15)
+      save(SCORES_KEY, next)
       return next
     })
-  }, [index, tee])
+  }, [])
 
-  const setScore = useCallback((i, val) => {
+  const setPlayerScore = useCallback((hole, pi, val) => {
     setScores(prev => {
-      const next = [...prev]
-      next[i] = Math.min(Math.max(val, 1), 15)
-      persist(index, tee, next)
+      const next = prev.map(r => [...r])
+      next[hole][pi] = Math.min(Math.max(val, 1), 15)
+      save(SCORES_KEY, next)
       return next
     })
-  }, [index, tee])
-
-  const resetScores = () => {
-    const fresh = Array(18).fill(null)
-    setScores(fresh)
-    persist(index, tee, fresh)
-  }
+  }, [])
 
   const startListening = useCallback(() => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SR || recognitionRef.current) return
-
     const SGL = window.SpeechGrammarList || window.webkitSpeechGrammarList
     const rec = new SR()
     rec.lang = 'en-US'
@@ -104,29 +115,28 @@ export default function App() {
         'zero one | zero two | zero three | zero four | zero five | ' +
         'zero six | zero seven | zero eight | zero nine | zero ten | ' +
         'zero eleven | zero twelve | zero thirteen | zero fourteen | zero fifteen ;'
-      const list = new SGL()
-      list.addFromString(grammar, 1)
-      rec.grammars = list
+      const list = new SGL(); list.addFromString(grammar, 1); rec.grammars = list
     }
     recognitionRef.current = rec
-
     rec.onstart = () => setVoiceState('listening')
-
     rec.onresult = (e) => {
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const result = e.results[i]
         setVoiceHeard(result[0].transcript)
         const alts = Array.from({ length: result.length }, (_, j) => result[j].transcript)
         for (const transcript of alts) {
-          const score = parseVoice(transcript)
-          if (score !== null) {
+          const parsed = parseVoice(transcript, setupRef.current.players)
+          if (parsed) {
+            const { playerIdx, score } = parsed
+            const key = `${playerIdx}-${score}`
             const now = Date.now()
-            if (score === lastScoreRef.current && now - lastScoreTimeRef.current < 2000) return
-            lastScoreRef.current = score
+            if (key === lastScoreRef.current && now - lastScoreTimeRef.current < 2000) return
+            lastScoreRef.current = key
             lastScoreTimeRef.current = now
-            setScore(currentHoleRef.current, score)
+            setPlayerScore(currentHoleRef.current, playerIdx, score)
+            const name = setupRef.current.players[playerIdx].name || `P${playerIdx + 1}`
             setVoiceState('confirm')
-            setVoiceMsg(`✓ Hole ${currentHoleRef.current + 1} — scored ${score}`)
+            setVoiceMsg(`✓ ${name} — hole ${currentHoleRef.current + 1} scored ${score}`)
             setVoiceHeard('')
             setTimeout(() => { setVoiceState('listening'); setVoiceHeard('') }, 2000)
             return
@@ -134,31 +144,23 @@ export default function App() {
         }
       }
     }
-
-    rec.onerror = (e) => {
-      if (e.error === 'not-allowed') { setVoiceState('off'); return }
-      // all other errors (no-speech, network, etc) — just restart
-    }
-
+    rec.onerror = (e) => { if (e.error === 'not-allowed') setVoiceState('off') }
     rec.onend = () => {
       if (recognitionRef.current === rec) {
         recognitionRef.current = null
         restartTimerRef.current = setTimeout(startListening, 300)
       }
     }
-
     try { rec.start() } catch {}
-  }, [setScore])
+  }, [setPlayerScore])
 
-  const stopListening = () => {
+  const stopListening = useCallback(() => {
     clearTimeout(restartTimerRef.current)
     const rec = recognitionRef.current
     recognitionRef.current = null
     try { rec?.abort() } catch {}
-    setVoiceState('off')
-    setVoiceMsg('')
-    setVoiceHeard('')
-  }
+    setVoiceState('off'); setVoiceMsg(''); setVoiceHeard('')
+  }, [])
 
   const toggleVoice = () => {
     if (voiceState === 'off') { manualMicRef.current = true; startListening() }
@@ -168,24 +170,17 @@ export default function App() {
   // Wake lock
   useEffect(() => {
     const acquire = async () => {
-      try {
-        if ('wakeLock' in navigator)
-          wakeLockRef.current = await navigator.wakeLock.request('screen')
-      } catch {}
+      try { if ('wakeLock' in navigator) wakeLockRef.current = await navigator.wakeLock.request('screen') } catch {}
     }
     acquire()
     const reacquire = () => { if (document.visibilityState === 'visible') acquire() }
     document.addEventListener('visibilitychange', reacquire)
-    return () => {
-      document.removeEventListener('visibilitychange', reacquire)
-      wakeLockRef.current?.release()
-    }
+    return () => { document.removeEventListener('visibilitychange', reacquire); wakeLockRef.current?.release() }
   }, [])
 
-  // Cleanup on unmount
-  useEffect(() => () => stopListening(), [])
+  useEffect(() => () => stopListening(), [stopListening])
 
-  // GPS — auto-select hole and toggle mic within 30m of any green
+  // GPS
   useEffect(() => {
     if (!navigator.geolocation) return
     const watchId = navigator.geolocation.watchPosition(
@@ -193,201 +188,231 @@ export default function App() {
         const { latitude, longitude } = pos.coords
         const nearIdx = nearestGreen(latitude, longitude, 30)
         if (nearIdx !== null) setCurrentHole(nearIdx)
-        if (!manualMicRef.current) {
-          if (nearIdx !== null) startListening()
-          else stopListening()
-        }
+        if (!manualMicRef.current) { if (nearIdx !== null) startListening(); else stopListening() }
       },
       () => {},
       { enableHighAccuracy: true, maximumAge: 5000 }
     )
     return () => navigator.geolocation.clearWatch(watchId)
-  }, [startListening])
+  }, [startListening, stopListening])
 
-  // BT clicker
+  // BT clicker — volume up: +1 for player 0, volume down: next hole
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === 'AudioVolumeUp' || e.key === 'VolumeUp') {
-        e.preventDefault()
-        changeScore(currentHoleRef.current, +1)
+        e.preventDefault(); changeScore(currentHoleRef.current, 0, +1)
       } else if (e.key === 'AudioVolumeDown' || e.key === 'VolumeDown') {
-        e.preventDefault()
-        setCurrentHole(h => (h + 1) % 18)
+        e.preventDefault(); setCurrentHole(h => (h + 1) % 18)
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [changeScore])
 
-  const [igStatus, setIgStatus] = useState('idle')
-  const [igError, setIgError] = useState('')
-
-  const handlePostToIG = async () => {
-    const d = new Date()
-    const dd = String(d.getDate()).padStart(2, '0')
-    const mm = String(d.getMonth() + 1).padStart(2, '0')
-    const yy = String(d.getFullYear()).slice(-2)
-    setIgStatus('posting'); setIgError('')
-    try {
-      localStorage.setItem(CRED_KEY, JSON.stringify({ memberId, pin }))
-      const res = await fetch('/api/post-score', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ memberId, pin, tees: tee === 'white' ? 1 : 2, date: `${dd}-${mm}-${yy}`, hcap: playingHcp ?? 0, scores }),
-      })
-      const data = await res.json()
-      if (data.ok) setIgStatus('ok')
-      else { setIgStatus('error'); setIgError(data.error ?? 'Unknown error') }
-    } catch (err) { setIgStatus('error'); setIgError(err.message) }
-  }
-
-  const handleExit = () => {
-    stopListening()
-    wakeLockRef.current?.release()
-    setFinished({ totalPts, outPts, inPts, tee, index })
-  }
-
-  const handleNewRound = () => {
-    localStorage.removeItem(STORAGE_KEY)
-    setScores(Array(18).fill(null))
-    setFinished(null)
-    startListening()
-  }
-
-  const holeData = holes.map((h, i) => {
-    const shots = playingHcp !== null ? shotsOnHole(playingHcp, h.si) : 0
-    const pts = stablefordPoints(scores[i], h.par, shots)
-    return { ...h, shots, pts }
+  // Per-hole data
+  const holeData = holes.map((h, hi) => {
+    const playerPts = setup.players.map((_, pi) => {
+      const shots = activeHcps[pi] !== null ? shotsOnHole(activeHcps[pi], h.si) : 0
+      return stablefordPoints(scores[hi][pi], h.par, shots)
+    })
+    const pairPts = setup.matchType === '4bb' ? [
+      Math.max(playerPts[0] ?? 0, playerPts[1] ?? 0),
+      Math.max(playerPts[2] ?? 0, playerPts[3] ?? 0),
+    ] : null
+    return { ...h, playerPts, pairPts }
   })
 
-  const sumPts = arr => arr.reduce((acc, h) => acc + (h.pts ?? 0), 0)
-  const totalPts = sumPts(holeData)
-  const outPts   = sumPts(holeData.slice(0, 9))
-  const inPts    = sumPts(holeData.slice(9))
-  const popupHole = popup !== null ? holeData[popup] : null
+  const sumRange = (from, to, pi) =>
+    holeData.slice(from, to).reduce((s, h) => s + (h.playerPts[pi] ?? 0), 0)
 
-  if (finished) return (
-    <div className="finished">
-      <div className="finished-card">
-        <div className="finished-title">Round Complete</div>
-        <div className="finished-total">{finished.totalPts}</div>
-        <div className="finished-label">Stableford Points</div>
-        <div className="finished-sub">
-          <span>OUT <strong>{finished.outPts}</strong></span>
-          <span>IN <strong>{finished.inPts}</strong></span>
-        </div>
-        <div className="finished-meta">{tees[finished.tee].label} tees · Index {finished.index}</div>
-        {playingHcp !== null && (
-          <div className="ig-section">
-            <div className="ig-creds">
-              <input className="ig-input" type="text" inputMode="email"
-                placeholder="Member ID or email" value={memberId} onChange={e => setMemberId(e.target.value)} />
-              <input className="ig-input" type="password"
-                placeholder="PIN" value={pin} onChange={e => setPin(e.target.value)} />
-            </div>
-            {igStatus !== 'ok' && (
-              <button className="ig-btn" onClick={handlePostToIG} disabled={igStatus === 'posting' || !memberId || !pin}>
-                {igStatus === 'posting' ? 'Posting…' : 'Post to Intelligent Golf'}
-              </button>
-            )}
-            {igStatus === 'ok' && <div className="ig-ok">Score posted to Intelligent Golf</div>}
-            {igStatus === 'ok' && <div className="ig-note">Personal record only — use the IG app for an attested handicap round</div>}
-            {igStatus === 'error' && <div className="ig-err">{igError}</div>}
-          </div>
-        )}
-        <button className="start-btn" onClick={handleNewRound}>New Round</button>
-      </div>
-    </div>
-  )
+  const outPts   = setup.players.map((_, pi) => sumRange(0, 9, pi))
+  const inPts    = setup.players.map((_, pi) => sumRange(9, 18, pi))
+  const totalPts = setup.players.map((_, pi) => sumRange(0, 18, pi))
 
-  return (
-    <div className="app">
-      <div className="header">
-        <div className="header-left">
-          <div className="index-field">
-            <input type="number" inputMode="decimal" step="0.1" min="0" max="54"
-              placeholder="Index" value={index}
-              onChange={e => { setIndex(e.target.value); persist(e.target.value, tee, scores) }} />
-          </div>
-          <div className="tee-toggle">
-            {['white','yellow'].map(t => (
-              <button key={t} className={`tee-btn ${t} ${tee===t?'active':''}`}
-                onClick={() => { setTee(t); persist(index, t, scores) }}>
-                {tees[t].label}
-              </button>
+  const pairTotals = setup.matchType === '4bb' ? [
+    holeData.reduce((s, h) => s + (h.pairPts?.[0] ?? 0), 0),
+    holeData.reduce((s, h) => s + (h.pairPts?.[1] ?? 0), 0),
+  ] : null
+
+  // ── Setup page ──────────────────────────────────────────────────
+  if (phase === 'setup') {
+    const updatePlayer = (i, field, val) =>
+      setSetup(prev => ({ ...prev, players: prev.players.map((p, j) => j === i ? { ...p, [field]: val } : p) }))
+
+    const canStart = setup.players.some(p => p.name.trim())
+
+    return (
+      <div className="setup-page">
+        <div className="setup-title">Bramley Golf Club</div>
+
+        <div className="setup-row">
+          <label>Match</label>
+          <div className="tog">
+            {[['individual','Individual'],['4bb','4BB']].map(([val, label]) => (
+              <button key={val} className={setup.matchType === val ? 'tog-on' : ''}
+                onClick={() => setSetup(p => ({ ...p, matchType: val }))}>{label}</button>
             ))}
           </div>
-          {playingHcp !== null && <span className="hcp-pill">CH {playingHcp}</span>}
         </div>
-        <div className="header-right">
-          <div className="hole-picker">
-            <button className="hole-pick-btn" onPointerDown={() => setCurrentHole(h => (h + 17) % 18)}>‹</button>
-            <span className="hole-pick-num">{currentHole + 1}</span>
-            <button className="hole-pick-btn" onPointerDown={() => setCurrentHole(h => (h + 1) % 18)}>›</button>
+
+        <div className="setup-row">
+          <label>Tee</label>
+          <div className="tog">
+            {['white','yellow'].map(t => (
+              <button key={t} className={setup.tee === t ? 'tog-on' : ''}
+                onClick={() => setSetup(p => ({ ...p, tee: t }))}>{tees[t].label}</button>
+            ))}
           </div>
-          <button className={`mic-indicator ${voiceState}`} onClick={toggleVoice}
-            title={voiceState === 'off' ? 'Tap to enable voice' : 'Tap to disable voice'}>
-            <span className="mic-dot" />
-          </button>
-          <button className="icon-btn" onClick={resetScores} title="Reset scores">↩</button>
-          <button className="exit-btn" onClick={handleExit} title="End round">Exit</button>
-          <span className="version-tag">v1.21</span>
         </div>
+
+        <table className="setup-table">
+          <thead>
+            <tr><th>#</th><th>Name</th><th>Index</th><th>{setup.matchType === '4bb' ? 'CH (4BB)' : 'CH'}</th></tr>
+          </thead>
+          <tbody>
+            {setup.players.map((p, i) => {
+              const idx = Number(p.index)
+              const hcp = p.index !== '' && !isNaN(idx) ? courseHandicap(idx, setup.tee) : null
+              const bbHcp = hcp !== null && setup.matchType === '4bb' ? Math.round(hcp * 0.75) : null
+              return (
+                <tr key={i}>
+                  <td>{i + 1}</td>
+                  <td><input value={p.name} onChange={e => updatePlayer(i, 'name', e.target.value)} placeholder={`Player ${i + 1}`} /></td>
+                  <td><input type="number" value={p.index} onChange={e => updatePlayer(i, 'index', e.target.value)} placeholder="0.0" step="0.1" min="0" max="54" /></td>
+                  <td>{bbHcp !== null ? `${hcp} (${bbHcp})` : hcp ?? '—'}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+
+        <button className="start-btn" onClick={() => {
+          save(SETUP_KEY, setup)
+          const fresh = EMPTY_SCORES()
+          setScores(fresh); save(SCORES_KEY, fresh)
+          setPhase('scoring')
+        }} disabled={!canStart}>Start Round</button>
+      </div>
+    )
+  }
+
+  // ── Finished page ────────────────────────────────────────────────
+  if (phase === 'finished') {
+    return (
+      <div className="setup-page">
+        <div className="setup-title">Round Complete</div>
+        <table className="setup-table">
+          <thead>
+            <tr><th>Player</th><th>CH</th><th>Out</th><th>In</th><th>Pts</th></tr>
+          </thead>
+          <tbody>
+            {setup.players.map((p, i) => (
+              <tr key={i}>
+                <td>{p.name || `P${i + 1}`}</td>
+                <td>{activeHcps[i] ?? '—'}</td>
+                <td>{outPts[i]}</td>
+                <td>{inPts[i]}</td>
+                <td><strong>{totalPts[i]}</strong></td>
+              </tr>
+            ))}
+            {setup.matchType === '4bb' && pairTotals && <>
+              <tr className="sc-pair-row"><td colSpan={4}>Pair A (P1+P2)</td><td><strong>{pairTotals[0]}</strong></td></tr>
+              <tr className="sc-pair-row"><td colSpan={4}>Pair B (P3+P4)</td><td><strong>{pairTotals[1]}</strong></td></tr>
+            </>}
+          </tbody>
+        </table>
+        <button className="start-btn" onClick={() => {
+          localStorage.removeItem(SCORES_KEY); localStorage.removeItem(SETUP_KEY)
+          setScores(EMPTY_SCORES()); setSetup(DEFAULT_SETUP()); setPhase('setup')
+        }}>New Round</button>
+      </div>
+    )
+  }
+
+  // ── Scoring page ─────────────────────────────────────────────────
+  return (
+    <div className="app">
+      <div className="sc-hdr">
+        <div className="hole-picker">
+          <button onPointerDown={() => setCurrentHole(h => (h + 17) % 18)}>‹</button>
+          <span>{currentHole + 1}</span>
+          <button onPointerDown={() => setCurrentHole(h => (h + 1) % 18)}>›</button>
+        </div>
+        <button className={`mic-indicator ${voiceState}`} onClick={toggleVoice} title="Toggle voice">
+          <span className="mic-dot" />
+        </button>
+        <button className="sc-done" onClick={() => { stopListening(); setPhase('finished') }}>Done</button>
+        <button className="sc-setup" onClick={() => { stopListening(); setPhase('setup') }}>Setup</button>
+        <span className="version-tag">v1.22</span>
       </div>
 
-      {voiceState === 'confirm' && <div className="voice-banner confirm">{voiceMsg}</div>}
+      {voiceState === 'confirm'   && <div className="voice-banner confirm">{voiceMsg}</div>}
       {voiceState === 'listening' && (
         <div className="voice-banner listening">
-          {voiceHeard ? `"${voiceHeard}"` : 'Say: zero N · N strokes · N shots'}
+          {voiceHeard ? `"${voiceHeard}"` : 'Say: [name] N strokes'}
         </div>
       )}
 
-      <div className="grid">
-        {holeData.map((h, i) => {
-          const pts = h.pts
-          const ptsClass = pts === null ? 'empty' : pts >= 4 ? 'p4' : pts === 3 ? 'p3' : pts === 2 ? 'p2' : pts === 1 ? 'p1' : 'p0'
-          return (
-            <div key={h.hole} className={`hole-row ${i === 8 ? 'after-nine' : ''} ${i === currentHole ? 'active-hole' : ''}`}>
-              <button className="hole-num" onClick={() => setPopup(i)}>
-                <span className="hole-num-digit">{h.hole}</span>
-                {h.shots > 0 && <span className="dot-row">{Array.from({length:h.shots}).map((_,k)=><span key={k} className="dot"/>)}</span>}
-              </button>
-              <div className="stepper">
-                <button className="step-btn" onPointerDown={() => changeScore(i, -1)}>−</button>
-                <span className={`score-val ${scores[i]===null?'dash':''}`}>
-                  {scores[i] === null ? '—' : scores[i]}
-                </span>
-                <button className="step-btn" onPointerDown={() => changeScore(i, +1)}>+</button>
-              </div>
-              <div className={`chip ${ptsClass}`}>{pts === null ? '·' : pts}</div>
-            </div>
-          )
-        })}
+      <div className="sc-scroll">
+        <table className="sc-table">
+          <thead>
+            <tr>
+              <th className="sc-th-h">H</th>
+              <th className="sc-th-p">P</th>
+              <th className="sc-th-s">SI</th>
+              {setup.players.map((p, i) => (
+                <th key={i} className="sc-th-pl">
+                  {p.name || `P${i + 1}`}
+                  {activeHcps[i] !== null && <span className="sc-hcp-sub"> {activeHcps[i]}</span>}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {holeData.map((h, hi) => (
+              <tr key={hi} className={`${hi === currentHole ? 'sc-active' : ''} ${hi === 8 ? 'sc-after9' : ''}`}>
+                <td className="sc-hole">{h.hole}</td>
+                <td className="sc-par">{h.par}</td>
+                <td className="sc-si">{h.si}</td>
+                {setup.players.map((_, pi) => {
+                  const sc = scores[hi][pi]
+                  const pts = h.playerPts[pi]
+                  const pc = pts === null ? 'pe' : pts >= 4 ? 'p4' : pts === 3 ? 'p3' : pts === 2 ? 'p2' : pts === 1 ? 'p1' : 'p0'
+                  return (
+                    <td key={pi} className="sc-cell">
+                      <div className="sc-stepper">
+                        <button onPointerDown={() => changeScore(hi, pi, -1)}>−</button>
+                        <span className={sc === null ? 'sc-dash' : 'sc-num'}>{sc ?? '—'}</span>
+                        <button onPointerDown={() => changeScore(hi, pi, +1)}>+</button>
+                      </div>
+                      <div className={`sc-pts ${pc}`}>{pts === null ? '·' : pts}</div>
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
+            <tr className="sc-sub">
+              <td colSpan={3}>Out</td>
+              {outPts.map((t, i) => <td key={i}>{t}</td>)}
+            </tr>
+            <tr className="sc-sub">
+              <td colSpan={3}>In</td>
+              {inPts.map((t, i) => <td key={i}>{t}</td>)}
+            </tr>
+            <tr className="sc-total">
+              <td colSpan={3}>Pts</td>
+              {totalPts.map((t, i) => <td key={i}>{t}</td>)}
+            </tr>
+            {setup.matchType === '4bb' && pairTotals && (
+              <tr className="sc-total sc-pair-row">
+                <td colSpan={3}>4BB</td>
+                <td colSpan={2}>{pairTotals[0]}</td>
+                <td colSpan={2}>{pairTotals[1]}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
-
-      <div className="sub-bar">
-        <span>OUT <strong>{outPts}</strong></span>
-        <div className="total-pts">
-          <span className="total-label">Total</span>
-          <span className="total-num">{totalPts}</span>
-        </div>
-        <span>IN <strong>{inPts}</strong></span>
-      </div>
-
-      {popupHole && (
-        <div className="overlay" onClick={() => setPopup(null)}>
-          <div className="popup" onClick={e => e.stopPropagation()}>
-            <div className="popup-title">Hole {popupHole.hole}</div>
-            <div className="popup-grid">
-              <span>Par</span><strong>{popupHole.par}</strong>
-              <span>Stroke Index</span><strong>{popupHole.si}</strong>
-              <span>{tees[tee].label} yards</span><strong>{tee==='white'?popupHole.white:popupHole.yellow}y</strong>
-              <span>Shots received</span><strong>{popupHole.shots}</strong>
-            </div>
-            <button className="popup-close" onClick={() => setPopup(null)}>Close</button>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
