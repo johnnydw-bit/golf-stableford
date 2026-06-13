@@ -18,7 +18,7 @@ function normalise(t) {
 }
 
 function parseScore(transcript) {
-  const t = normalise(transcript + ' strokes')
+  const t = normalise(transcript.replace(/\bstrokes?\b/gi, '') + ' strokes')
   const nums = (t.match(/\d+/g) || []).map(Number).filter(n => n >= 1 && n <= 15)
   return nums.length ? nums[nums.length - 1] : null
 }
@@ -109,12 +109,17 @@ export default function App() {
     rec.interimResults = true
     rec.maxAlternatives = 5
     if (SGL) {
+      const names = setupRef.current.players
+        .map(p => p.name.trim().toLowerCase()).filter(Boolean)
+      const nameGrammar = names.length ? names.join(' | ') + ' | ' : ''
       const grammar = '#JSGF V1.0; grammar score; public <score> = ' +
+        nameGrammar +
         'one | two | three | four | five | six | seven | eight | nine | ten | ' +
         'eleven | twelve | thirteen | fourteen | fifteen | ' +
         'zero one | zero two | zero three | zero four | zero five | ' +
         'zero six | zero seven | zero eight | zero nine | zero ten | ' +
-        'zero eleven | zero twelve | zero thirteen | zero fourteen | zero fifteen ;'
+        'zero eleven | zero twelve | zero thirteen | zero fourteen | zero fifteen | ' +
+        'stroke | strokes | shots ;'
       const list = new SGL(); list.addFromString(grammar, 1); rec.grammars = list
     }
     recognitionRef.current = rec
@@ -343,7 +348,7 @@ export default function App() {
         </button>
         <button className="sc-done" onClick={() => { stopListening(); setPhase('finished') }}>Done</button>
         <button className="sc-setup" onClick={() => { stopListening(); setPhase('setup') }}>Setup</button>
-        <span className="version-tag">v1.22</span>
+        <span className="version-tag">v1.23</span>
       </div>
 
       {voiceState === 'confirm'   && <div className="voice-banner confirm">{voiceMsg}</div>}
