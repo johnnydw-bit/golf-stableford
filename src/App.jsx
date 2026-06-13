@@ -108,8 +108,8 @@ export default function App() {
     const SGL = window.SpeechGrammarList || window.webkitSpeechGrammarList
     const rec = new SR()
     rec.lang = 'en-US'
-    rec.continuous = false
-    rec.interimResults = false
+    rec.continuous = true
+    rec.interimResults = true
     rec.maxAlternatives = 5
     if (SGL) {
       const grammar = '#JSGF V1.0; grammar score; public <score> = ' +
@@ -348,7 +348,7 @@ export default function App() {
         </button>
         <button className="sc-done" onClick={() => { stopListening(); setPhase('finished') }}>Done</button>
         <button className="sc-setup" onClick={() => { stopListening(); setPhase('setup') }}>Setup</button>
-        <span className="version-tag">v1.30</span>
+        <span className="version-tag">v1.31</span>
       </div>
 
       {voiceState === 'confirm'   && <div className="voice-banner confirm">{voiceMsg}</div>}
