@@ -165,14 +165,27 @@ export default function App() {
     rec.start()
   }, [])
 
-  // GPS — hole switching only, no mic control
+  // GPS — hole switching + notification on green exit (triggers Tasker voice task)
   useEffect(() => {
     if (!navigator.geolocation) return
+    let lastNearIdx = null
     const watchId = navigator.geolocation.watchPosition(
       pos => {
         const { latitude, longitude } = pos.coords
         const nearIdx = nearestGreen(latitude, longitude, 30)
-        if (nearIdx !== null) setCurrentHole(nearIdx)
+        if (nearIdx !== null) {
+          setCurrentHole(nearIdx)
+          lastNearIdx = nearIdx
+        } else if (lastNearIdx !== null) {
+          if (Notification.permission === 'granted') {
+            new Notification(`⛳ Hole ${lastNearIdx + 1} — speak scores`, {
+              body: 'Say each player name and score',
+              tag: 'golf-score',
+              silent: true,
+            })
+          }
+          lastNearIdx = null
+        }
       },
       () => {},
       { enableHighAccuracy: true, maximumAge: 5000 }
@@ -281,6 +294,8 @@ export default function App() {
         </table>
 
         <button className="start-btn" onClick={() => {
+          if ('Notification' in window && Notification.permission === 'default')
+            Notification.requestPermission()
           save(SETUP_KEY, setup)
           const fresh = EMPTY_SCORES()
           setScores(fresh); save(SCORES_KEY, fresh)
@@ -336,7 +351,7 @@ export default function App() {
         <button className="sc-setup" onClick={simulateTasker}>Test</button>
         <button className="sc-done" onClick={() => { setPhase('finished') }}>Done</button>
         <button className="sc-back" onClick={() => { localStorage.removeItem(SETUP_KEY); setSetup(DEFAULT_SETUP()); setPhase('setup') }}>Setup</button>
-        <span className="version-tag">v1.51</span>
+        <span className="version-tag">v1.52</span>
       </div>
 
       {voiceMsg && <div className={`voice-banner ${voiceMsg.startsWith('✓') ? 'confirm' : 'listening'}`}>{voiceMsg}</div>}
