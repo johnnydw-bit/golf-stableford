@@ -108,7 +108,8 @@ export default function App() {
     const t = normalise(cleaned)
     const players = setupRef.current.players
     const confirmed = []
-    setVoiceHeard(`PARSED: ${t}`)
+    const nameDebug = setupRef.current.players.map(p => `${p.name}→${resolveNames(p.name.trim().toLowerCase()).trim()}`).join(' ')
+    setVoiceHeard(`T:${t} | N:${nameDebug}`)
 
     players.forEach((p, pi) => {
       const rawName = p.name.trim().toLowerCase()
@@ -335,7 +336,7 @@ export default function App() {
         <button className="sc-setup" onClick={simulateTasker}>Test</button>
         <button className="sc-done" onClick={() => { setPhase('finished') }}>Done</button>
         <button className="sc-back" onClick={() => { localStorage.removeItem(SETUP_KEY); setSetup(DEFAULT_SETUP()); setPhase('setup') }}>Setup</button>
-        <span className="version-tag">v1.50</span>
+        <span className="version-tag">v1.51</span>
       </div>
 
       {voiceMsg && <div className={`voice-banner ${voiceMsg.startsWith('✓') ? 'confirm' : 'listening'}`}>{voiceMsg}</div>}
