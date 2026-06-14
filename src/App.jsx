@@ -333,8 +333,8 @@ export default function App() {
         <span className="relay-dot" title="Tasker relay active" />
         <button className="sc-setup" onClick={simulateTasker}>Test</button>
         <button className="sc-done" onClick={() => { setPhase('finished') }}>Done</button>
-        <button className="sc-setup" onClick={() => { setPhase('setup') }}>Setup</button>
-        <span className="version-tag">v1.45</span>
+        <button className="sc-back" onClick={() => { localStorage.removeItem(SETUP_KEY); setSetup(DEFAULT_SETUP()); setPhase('setup') }}>Setup</button>
+        <span className="version-tag">v1.46</span>
       </div>
 
       {voiceMsg && <div className={`voice-banner ${voiceMsg.startsWith('✓') ? 'confirm' : 'listening'}`}>{voiceMsg}</div>}

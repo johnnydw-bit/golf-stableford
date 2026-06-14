@@ -129,6 +129,11 @@ html, body, #root {
   color: rgba(255,255,255,0.8); border-radius: 3px; padding: 2px 8px;
   font-size: 0.8rem; cursor: pointer;
 }
+.sc-back {
+  background: transparent; border: 1px solid rgba(255,255,255,0.3);
+  color: rgba(255,255,255,0.8); border-radius: 3px; padding: 2px 8px;
+  font-size: 0.8rem; cursor: pointer;
+}
 .version-tag { font-size: 0.6rem; color: rgba(255,255,255,0.35); }
 .relay-dot {
   width: 9px; height: 9px; border-radius: 50%;
