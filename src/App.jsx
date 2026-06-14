@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { holes, tees, courseHandicap, shotsOnHole, stablefordPoints, nearestGreen } from './courseData.js'
+import { resolveNames } from './nameAliases.js'
 
 const WORD_NUMS = {
   one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9,
@@ -102,12 +103,9 @@ export default function App() {
   const applyTranscript = useCallback((transcript) => {
     setVoiceHeard('')
     setTimeout(() => setVoiceHeard(transcript), 50)
-    const cleaned = transcript
+    const cleaned = resolveNames(transcript)
       .replace(/\bplate\b/gi, 'played')
       .replace(/\bblade\b/gi, 'played')
-      .replace(/\bplayed\b/gi, 'played')
-      .replace(/\bgym\b/gi, 'jim')
-      .replace(/\bcrisp\b/gi, 'chris')
     const t = normalise(cleaned)
     const players = setupRef.current.players
     const confirmed = []
@@ -337,7 +335,7 @@ export default function App() {
         <button className="sc-setup" onClick={simulateTasker}>Test</button>
         <button className="sc-done" onClick={() => { stopListening(); setPhase('finished') }}>Done</button>
         <button className="sc-setup" onClick={() => { stopListening(); setPhase('setup') }}>Setup</button>
-        <span className="version-tag">v1.41</span>
+        <span className="version-tag">v1.42</span>
       </div>
 
       {voiceMsg && <div className={`voice-banner ${voiceMsg.startsWith('✓') ? 'confirm' : 'listening'}`}>{voiceMsg}</div>}
