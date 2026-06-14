@@ -190,7 +190,7 @@ const NAME_ALIASES = {
   // Peter / Pete
   'pita':'peter','beat her':'peter','heater':'peter','meter':'peter','peach':'peter','pete':'peter',
   // Philip / Phil / Pip
-  'phillip':'philip','fill up':'philip','fillip':'philip','fill':'philip','feel':'philip','pill':'philip','hill':'philip','full up':'philip','flip':'philip','phil':'philip','pip':'philip',
+  'phillip':'philip','fill up':'philip','fillip':'philip','fill':'philip','feel':'philip','pill':'philip','hill':'philip','full up':'philip','flip':'philip','phil':'philip','pip':'philip','filled':'philip','field':'philip','build':'philip',
   // Quentin
   'kwen tin':'quentin','question':'quentin','kentin':'quentin',
   // Raymond / Ray

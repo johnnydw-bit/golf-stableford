@@ -104,8 +104,7 @@ export default function App() {
     setVoiceHeard('')
     setTimeout(() => setVoiceHeard(transcript), 50)
     const cleaned = resolveNames(transcript)
-      .replace(/\bplate\b/gi, 'played')
-      .replace(/\bblade\b/gi, 'played')
+      .replace(/\b(plate|blade|played|blayed|plade)\b/gi, 'played')
     const t = normalise(cleaned)
     const players = setupRef.current.players
     const confirmed = []
@@ -335,7 +334,7 @@ export default function App() {
         <button className="sc-setup" onClick={simulateTasker}>Test</button>
         <button className="sc-done" onClick={() => { stopListening(); setPhase('finished') }}>Done</button>
         <button className="sc-setup" onClick={() => { stopListening(); setPhase('setup') }}>Setup</button>
-        <span className="version-tag">v1.42</span>
+        <span className="version-tag">v1.43</span>
       </div>
 
       {voiceMsg && <div className={`voice-banner ${voiceMsg.startsWith('✓') ? 'confirm' : 'listening'}`}>{voiceMsg}</div>}
