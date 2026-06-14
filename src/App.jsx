@@ -111,9 +111,9 @@ export default function App() {
     setVoiceHeard(`PARSED: ${t}`)
 
     players.forEach((p, pi) => {
-      const name = p.name.trim().toLowerCase()
-      if (!name) return
-      // match "name played N" or "name N"
+      const rawName = p.name.trim().toLowerCase()
+      if (!rawName) return
+      const name = resolveNames(rawName).trim()
       const re = new RegExp(`\\b${name}\\s+(?:played\\s+)?(\\d+)\\b`, 'i')
       const m = t.match(re)
       if (m) {
@@ -335,7 +335,7 @@ export default function App() {
         <button className="sc-setup" onClick={simulateTasker}>Test</button>
         <button className="sc-done" onClick={() => { setPhase('finished') }}>Done</button>
         <button className="sc-back" onClick={() => { localStorage.removeItem(SETUP_KEY); setSetup(DEFAULT_SETUP()); setPhase('setup') }}>Setup</button>
-        <span className="version-tag">v1.49</span>
+        <span className="version-tag">v1.50</span>
       </div>
 
       {voiceMsg && <div className={`voice-banner ${voiceMsg.startsWith('✓') ? 'confirm' : 'listening'}`}>{voiceMsg}</div>}
