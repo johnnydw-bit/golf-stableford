@@ -42,7 +42,10 @@ function parseVoice(transcript) {
 
 const SETUP_KEY  = 'golf_setup_4p'
 const SCORES_KEY = 'golf_scores_4p'
+const GPS_LOG_KEY = 'golf_gps_log'
 const CRED_KEY   = 'ig_credentials'
+
+const ts = () => new Date().toLocaleTimeString('en-GB', { hour12: false })
 
 const load = (key) => { try { return JSON.parse(localStorage.getItem(key)) } catch { return null } }
 const save = (key, val) => localStorage.setItem(key, JSON.stringify(val))
@@ -59,8 +62,10 @@ export default function App() {
   const [setup, setSetup]   = useState(() => load(SETUP_KEY) ?? DEFAULT_SETUP())
   const [scores, setScores] = useState(() => load(SCORES_KEY) ?? EMPTY_SCORES())
   const [currentHole, setCurrentHole] = useState(0)
-  const [voiceMsg, setVoiceMsg]   = useState('')
+  const [voiceMsg, setVoiceMsg]     = useState('')
   const [voiceHeard, setVoiceHeard] = useState('')
+  const [gpsLog, setGpsLog]         = useState(() => load(GPS_LOG_KEY) ?? [])
+  const [showLog, setShowLog]       = useState(false)
 
   const currentHoleRef   = useRef(0)
   const wakeLockRef      = useRef(null)
@@ -71,6 +76,15 @@ export default function App() {
 
   useEffect(() => { currentHoleRef.current = currentHole }, [currentHole])
   useEffect(() => { setupRef.current = setup }, [setup])
+
+  const addLog = useCallback((event, data = {}) => {
+    const entry = { ts: ts(), event, ...data }
+    setGpsLog(prev => {
+      const next = [...prev, entry]
+      save(GPS_LOG_KEY, next)
+      return next
+    })
+  }, [])
 
   // Computed handicaps
   const playingHcps = setup.players.map(p => {
@@ -101,15 +115,12 @@ export default function App() {
   }, [])
 
   const applyTranscript = useCallback((transcript) => {
-    setVoiceHeard('')
-    setTimeout(() => setVoiceHeard(transcript), 50)
+    setVoiceHeard(transcript)
     const cleaned = resolveNames(transcript)
       .replace(/\b(plate|blade|played|blayed|plade)\b/gi, 'played')
     const t = normalise(cleaned)
     const players = setupRef.current.players
     const confirmed = []
-    const nameDebug = setupRef.current.players.map(p => `${p.name}→${resolveNames(p.name.trim().toLowerCase()).trim()}`).join(' ')
-    setVoiceHeard(`T:${t} | N:${nameDebug}`)
 
     players.forEach((p, pi) => {
       const rawName = p.name.trim().toLowerCase()
@@ -126,13 +137,10 @@ export default function App() {
       }
     })
 
-    if (confirmed.length) {
-      setVoiceMsg(`✓ ${confirmed.join(' · ')}`)
-    } else {
-      setVoiceMsg('? not recognised')
-    }
-    setVoiceHeard(cleaned)
-  }, [setPlayerScore])
+    const result = confirmed.length ? `✓ ${confirmed.join(' · ')}` : '? not recognised'
+    setVoiceMsg(result)
+    addLog('TASKER', { hole: currentHoleRef.current, transcript, scores: confirmed.join(' · ') || 'none' })
+  }, [setPlayerScore, addLog])
 
   // Wake lock
   useEffect(() => {
@@ -171,27 +179,32 @@ export default function App() {
     let lastNearIdx = null
     const watchId = navigator.geolocation.watchPosition(
       pos => {
-        const { latitude, longitude } = pos.coords
-        const nearIdx = nearestGreen(latitude, longitude, 30)
-        if (nearIdx !== null) {
+        const { latitude: lat, longitude: lng } = pos.coords
+        const nearIdx = nearestGreen(lat, lng, 30)
+        if (nearIdx !== null && nearIdx !== lastNearIdx) {
           setCurrentHole(nearIdx)
+          addLog('APPROACH', { hole: nearIdx, lat: +lat.toFixed(5), lng: +lng.toFixed(5) })
           lastNearIdx = nearIdx
-        } else if (lastNearIdx !== null) {
+        } else if (nearIdx === null && lastNearIdx !== null) {
+          addLog('EXIT', { hole: lastNearIdx, lat: +lat.toFixed(5), lng: +lng.toFixed(5) })
           if (Notification.permission === 'granted') {
             new Notification(`⛳ Hole ${lastNearIdx + 1} — speak scores`, {
               body: 'Say each player name and score',
               tag: 'golf-score',
               silent: true,
             })
+            addLog('NOTIFY', { hole: lastNearIdx })
+          } else {
+            addLog('NOTIFY_BLOCKED', { hole: lastNearIdx, permission: Notification.permission })
           }
           lastNearIdx = null
         }
       },
-      () => {},
+      (err) => addLog('GPS_ERR', { code: err.code, msg: err.message }),
       { enableHighAccuracy: true, maximumAge: 5000 }
     )
     return () => navigator.geolocation.clearWatch(watchId)
-  }, [])
+  }, [addLog])
 
   // Poll relay endpoint every second
   useEffect(() => {
@@ -334,6 +347,34 @@ export default function App() {
           localStorage.removeItem(SCORES_KEY); localStorage.removeItem(SETUP_KEY)
           setScores(EMPTY_SCORES()); setSetup(DEFAULT_SETUP()); setPhase('setup')
         }}>New Round</button>
+        <button className="start-btn" style={{marginTop:'0.5rem',background:'#374151'}} onClick={() => setShowLog(v => !v)}>
+          {showLog ? 'Hide Log' : `GPS Log (${gpsLog.length} events)`}
+        </button>
+        {showLog && (
+          <div className="log-overlay" style={{position:'static',marginTop:'0.5rem'}}>
+            <div className="log-toolbar">
+              <span>GPS + Tasker Log</span>
+              <button onClick={() => { localStorage.removeItem(GPS_LOG_KEY); setGpsLog([]) }}>Clear</button>
+            </div>
+            <div className="log-body" style={{maxHeight:'50vh'}}>
+              {gpsLog.length === 0
+                ? <div className="log-empty">No events yet</div>
+                : [...gpsLog].reverse().map((e, i) => (
+                  <div key={i} className={`log-entry log-${e.event.toLowerCase()}`}>
+                    <span className="log-ts">{e.ts}</span>
+                    <span className="log-ev">{e.event}</span>
+                    {e.hole !== undefined && <span>H{e.hole + 1}</span>}
+                    {e.lat !== undefined && <span className="log-pos">{e.lat},{e.lng}</span>}
+                    {e.transcript && <span className="log-tx">"{e.transcript}"</span>}
+                    {e.scores && e.scores !== 'none' && <span className="log-sc">→ {e.scores}</span>}
+                    {e.permission && <span className="log-tx">{e.permission}</span>}
+                    {e.msg && <span className="log-tx">{e.msg}</span>}
+                  </div>
+                ))
+              }
+            </div>
+          </div>
+        )}
       </div>
     )
   }
@@ -349,13 +390,41 @@ export default function App() {
         </div>
         <span className="relay-dot" title="Tasker relay active" />
         <button className="sc-setup" onClick={simulateTasker}>Test</button>
+        <button className="sc-setup" onClick={() => setShowLog(v => !v)}>Log</button>
         <button className="sc-done" onClick={() => { setPhase('finished') }}>Done</button>
         <button className="sc-back" onClick={() => { localStorage.removeItem(SETUP_KEY); setSetup(DEFAULT_SETUP()); setPhase('setup') }}>Setup</button>
-        <span className="version-tag">v1.52</span>
+        <span className="version-tag">v1.53</span>
       </div>
 
       {voiceMsg && <div className={`voice-banner ${voiceMsg.startsWith('✓') ? 'confirm' : 'listening'}`}>{voiceMsg}</div>}
       {voiceHeard && <div className="voice-banner debug">RAW: "{voiceHeard}"</div>}
+
+      {showLog && (
+        <div className="log-overlay">
+          <div className="log-toolbar">
+            <span>GPS + Tasker Log ({gpsLog.length})</span>
+            <button onClick={() => { localStorage.removeItem(GPS_LOG_KEY); setGpsLog([]) }}>Clear</button>
+            <button onClick={() => setShowLog(false)}>✕</button>
+          </div>
+          <div className="log-body">
+            {gpsLog.length === 0
+              ? <div className="log-empty">No events yet</div>
+              : [...gpsLog].reverse().map((e, i) => (
+                <div key={i} className={`log-entry log-${e.event.toLowerCase()}`}>
+                  <span className="log-ts">{e.ts}</span>
+                  <span className="log-ev">{e.event}</span>
+                  {e.hole !== undefined && <span>H{e.hole + 1}</span>}
+                  {e.lat !== undefined && <span className="log-pos">{e.lat},{e.lng}</span>}
+                  {e.transcript && <span className="log-tx">"{e.transcript}"</span>}
+                  {e.scores && e.scores !== 'none' && <span className="log-sc">→ {e.scores}</span>}
+                  {e.permission && <span className="log-tx">{e.permission}</span>}
+                  {e.msg && <span className="log-tx">{e.msg}</span>}
+                </div>
+              ))
+            }
+          </div>
+        </div>
+      )}
 
       <div className="sc-scroll">
         <table className="sc-table">
