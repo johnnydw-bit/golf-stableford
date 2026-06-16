@@ -158,19 +158,22 @@ export default function App() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SR) return
     navigator.vibrate?.(500)
-    const rec = new SR()
-    rec.lang = 'en-GB'
-    rec.continuous = false
-    rec.interimResults = false
-    rec.maxAlternatives = 3
-    rec.onresult = (e) => {
-      const transcript = e.results[0][0].transcript
-      applyTranscriptRef.current?.(transcript)
-    }
-    rec.onerror = (err) => addLog('STT_ERR', { hole: holeIdx ?? currentHoleRef.current, error: err.error })
-    rec.start()
-    addLog('STT_START', { hole: holeIdx ?? currentHoleRef.current })
-    setVoiceMsg('🎤 listening…')
+    setVoiceMsg('🎤 …')
+    setTimeout(() => {
+      const rec = new SR()
+      rec.lang = 'en-GB'
+      rec.continuous = false
+      rec.interimResults = false
+      rec.maxAlternatives = 3
+      rec.onresult = (e) => {
+        const transcript = e.results[0][0].transcript
+        applyTranscriptRef.current?.(transcript)
+      }
+      rec.onerror = (err) => addLog('STT_ERR', { hole: holeIdx ?? currentHoleRef.current, error: err.error })
+      rec.start()
+      addLog('STT_START', { hole: holeIdx ?? currentHoleRef.current })
+      setVoiceMsg('🎤 listening…')
+    }, 600)
   }, [addLog])
 
   useEffect(() => { applyTranscriptRef.current = applyTranscript }, [applyTranscript])
@@ -372,7 +375,7 @@ export default function App() {
         <button className="sc-setup" onClick={() => setShowLog(v => !v)}>Log</button>
         <button className="sc-done" onClick={() => { setPhase('finished') }}>Done</button>
         <button className="sc-back" onClick={() => { localStorage.removeItem(SETUP_KEY); setSetup(DEFAULT_SETUP()); setPhase('setup') }}>Setup</button>
-        <span className="version-tag">v1.55</span>
+        <span className="version-tag">v1.56</span>
       </div>
 
       {voiceMsg && <div className={`voice-banner ${voiceMsg.startsWith('✓') ? 'confirm' : 'listening'}`}>{voiceMsg}</div>}
