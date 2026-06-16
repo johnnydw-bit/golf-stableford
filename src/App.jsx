@@ -243,6 +243,70 @@ export default function App() {
     holeData.reduce((s, h) => s + (h.pairPts?.[1] ?? 0), 0),
   ] : null
 
+  const captureScorecard = useCallback(() => {
+    const activePlayers = setup.players.filter(p => p.name.trim())
+    const nP = activePlayers.length || 1
+    const COL_W = 38, NAME_W = 64, LEFT_W = 70
+    const ROW_H = 18, HEAD_H = 28, PAD = 8
+    const width = LEFT_W + NAME_W * nP + PAD * 2
+    const rows = 18 + 3
+    const height = HEAD_H + ROW_H * rows + PAD * 2 + 40
+
+    const canvas = document.createElement('canvas')
+    canvas.width = width * 2; canvas.height = height * 2
+    const ctx = canvas.getContext('2d')
+    ctx.scale(2, 2)
+
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, width, height)
+
+    const drawRow = (y, cols, bg, fg) => {
+      ctx.fillStyle = bg
+      ctx.fillRect(PAD, y, width - PAD * 2, ROW_H)
+      ctx.fillStyle = fg
+      ctx.font = '10px monospace'
+      ctx.textBaseline = 'middle'
+      cols.forEach((txt, i) => {
+        const x = i === 0 ? PAD + 2 : PAD + LEFT_W + NAME_W * (i - 1) + NAME_W / 2
+        ctx.textAlign = i === 0 ? 'left' : 'center'
+        ctx.fillText(String(txt ?? '—'), x, y + ROW_H / 2)
+      })
+    }
+
+    ctx.fillStyle = '#166534'; ctx.font = 'bold 13px sans-serif'
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+    ctx.fillText('Bramley Golf Club', width / 2, PAD + HEAD_H / 2)
+
+    drawRow(PAD + HEAD_H, ['H  P  SI', ...activePlayers.map(p => p.name)], '#166534', '#ffffff')
+
+    holes.forEach((h, hi) => {
+      const playerCols = activePlayers.map((_, pi) => {
+        const sc = scores[hi][pi]
+        const pts = holeData[hi].playerPts[pi]
+        return sc !== null ? `${sc}(${pts ?? 0})` : '—'
+      })
+      const bg = hi === currentHole ? '#fef9c3' : hi % 2 === 0 ? '#ffffff' : '#f9fafb'
+      drawRow(PAD + HEAD_H + ROW_H * (hi + 1), [`${h.hole}  ${h.par}  ${h.si}`, ...playerCols], bg, '#111827')
+    })
+
+    const subY = PAD + HEAD_H + ROW_H * 19
+    drawRow(subY,             ['Out',   ...activePlayers.map((_, pi) => outPts[pi])],   '#f0fdf4', '#166534')
+    drawRow(subY + ROW_H,     ['In',    ...activePlayers.map((_, pi) => inPts[pi])],    '#f0fdf4', '#166534')
+    drawRow(subY + ROW_H * 2, ['Total', ...activePlayers.map((_, pi) => totalPts[pi])], '#166534', '#ffffff')
+
+    canvas.toBlob(async (blob) => {
+      const file = new File([blob], `scorecard-${new Date().toISOString().slice(0,10)}.png`, { type: 'image/png' })
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: 'Scorecard' })
+      } else {
+        const a = document.createElement('a')
+        a.href = URL.createObjectURL(blob)
+        a.download = file.name
+        a.click()
+      }
+    }, 'image/png')
+  }, [setup, scores, holeData, outPts, inPts, totalPts, currentHole])
+
   // ── Setup page ──────────────────────────────────────────────────
   if (phase === 'setup') {
     const updatePlayer = (i, field, val) =>
@@ -306,75 +370,6 @@ export default function App() {
   }
 
   // ── Finished page ────────────────────────────────────────────────
-  const captureScorecard = useCallback(() => {
-    const activePlayers = setup.players.filter(p => p.name.trim())
-    const nP = activePlayers.length || 1
-    const COL_W = 38, NAME_W = 64, LEFT_W = 70
-    const ROW_H = 18, HEAD_H = 28, PAD = 8
-    const width = LEFT_W + NAME_W * nP + PAD * 2
-    const rows = 18 + 3 // holes + out/in/total
-    const height = HEAD_H + ROW_H * rows + PAD * 2 + 40
-
-    const canvas = document.createElement('canvas')
-    canvas.width = width * 2; canvas.height = height * 2
-    const ctx = canvas.getContext('2d')
-    ctx.scale(2, 2)
-
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, width, height)
-
-    const drawRow = (y, cols, bg, fg) => {
-      ctx.fillStyle = bg
-      ctx.fillRect(PAD, y, width - PAD * 2, ROW_H)
-      ctx.fillStyle = fg
-      ctx.font = '10px monospace'
-      ctx.textBaseline = 'middle'
-      cols.forEach((txt, i) => {
-        const x = i === 0 ? PAD + 2 : PAD + LEFT_W + NAME_W * (i - 1) + NAME_W / 2
-        ctx.textAlign = i === 0 ? 'left' : 'center'
-        ctx.fillText(String(txt ?? '—'), x, y + ROW_H / 2)
-      })
-    }
-
-    // Title
-    ctx.fillStyle = '#166534'; ctx.font = 'bold 13px sans-serif'
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    ctx.fillText('Bramley Golf Club', width / 2, PAD + HEAD_H / 2)
-
-    // Header
-    const names = activePlayers.map(p => p.name)
-    drawRow(PAD + HEAD_H, ['H  P  SI', ...names], '#166534', '#ffffff')
-
-    // Holes
-    holes.forEach((h, hi) => {
-      const playerCols = activePlayers.map((_, pi) => {
-        const realPi = setup.players.findIndex((p, j) => p.name.trim() && activePlayers.indexOf(p) === pi)
-        const sc = scores[hi][pi]
-        const pts = holeData[hi].playerPts[pi]
-        return sc !== null ? `${sc}(${pts ?? 0})` : '—'
-      })
-      const bg = hi === currentHole ? '#fef9c3' : hi % 2 === 0 ? '#ffffff' : '#f9fafb'
-      drawRow(PAD + HEAD_H + ROW_H * (hi + 1), [`${h.hole}  ${h.par}  ${h.si}`, ...playerCols], bg, '#111827')
-    })
-
-    const subY = PAD + HEAD_H + ROW_H * 19
-    drawRow(subY,          ['Out', ...activePlayers.map((_, pi) => outPts[pi])],   '#f0fdf4', '#166534')
-    drawRow(subY + ROW_H,  ['In',  ...activePlayers.map((_, pi) => inPts[pi])],    '#f0fdf4', '#166534')
-    drawRow(subY + ROW_H * 2, ['Total', ...activePlayers.map((_, pi) => totalPts[pi])], '#166534', '#ffffff')
-
-    canvas.toBlob(async (blob) => {
-      const file = new File([blob], `scorecard-${new Date().toISOString().slice(0,10)}.png`, { type: 'image/png' })
-      if (navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], title: 'Scorecard' })
-      } else {
-        const a = document.createElement('a')
-        a.href = URL.createObjectURL(blob)
-        a.download = file.name
-        a.click()
-      }
-    }, 'image/png')
-  }, [setup, scores, holeData, outPts, inPts, totalPts, currentHole])
-
   if (phase === 'finished') {
     return (
       <div className="setup-page">
@@ -448,7 +443,7 @@ export default function App() {
         <button className="sc-setup" onClick={() => setShowLog(v => !v)}>Log</button>
         <button className="sc-done" onClick={() => { captureScorecard(); setPhase('finished') }}>Done</button>
         <button className="sc-back" onClick={() => { localStorage.removeItem(SETUP_KEY); setSetup(DEFAULT_SETUP()); setPhase('setup') }}>Setup</button>
-        <span className="version-tag">v1.60</span>
+        <span className="version-tag">v1.61</span>
       </div>
 
       {voiceMsg && <div className={`voice-banner ${voiceMsg.startsWith('✓') ? 'confirm' : 'listening'}`}>{voiceMsg}</div>}
