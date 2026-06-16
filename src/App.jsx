@@ -72,11 +72,13 @@ export default function App() {
   const lastScoreRef        = useRef(null)
   const lastScoreTimeRef    = useRef(0)
   const setupRef            = useRef(setup)
+  const scoresRef           = useRef(scores)
   const applyTranscriptRef  = useRef(null)
   const startListeningRef   = useRef(null)
 
   useEffect(() => { currentHoleRef.current = currentHole }, [currentHole])
   useEffect(() => { setupRef.current = setup }, [setup])
+  useEffect(() => { scoresRef.current = scores }, [scores])
 
   const addLog = useCallback((event, data = {}) => {
     const entry = { ts: ts(), event, ...data }
@@ -183,7 +185,7 @@ export default function App() {
   useEffect(() => { applyTranscriptRef.current = applyTranscript }, [applyTranscript])
   useEffect(() => { startListeningRef.current = startListening }, [startListening])
 
-  // GPS — hole switching on approach, vibrate + STT on exit (min 20s dwell to avoid walk-through)
+  // GPS — sequential hole advance only, STT on exit if dwell≥20s and hole unscored
   useEffect(() => {
     if (!navigator.geolocation) return
     let lastNearIdx = null
@@ -194,17 +196,26 @@ export default function App() {
         const { latitude: lat, longitude: lng } = pos.coords
         const nearIdx = nearestGreen(lat, lng, 30)
         if (nearIdx !== null && nearIdx !== lastNearIdx) {
-          setCurrentHole(nearIdx)
-          addLog('APPROACH', { hole: nearIdx, lat: +lat.toFixed(5), lng: +lng.toFixed(5) })
-          lastNearIdx = nearIdx
-          approachTime = Date.now()
+          const cur = currentHoleRef.current
+          // Only advance to the next sequential hole, never back or skip
+          if (nearIdx === cur || nearIdx === cur + 1) {
+            if (nearIdx === cur + 1) setCurrentHole(nearIdx)
+            addLog('APPROACH', { hole: nearIdx, lat: +lat.toFixed(5), lng: +lng.toFixed(5) })
+            lastNearIdx = nearIdx
+            approachTime = Date.now()
+          } else {
+            addLog('APPROACH_SKIP', { hole: nearIdx, cur, reason: nearIdx < cur ? 'back' : 'skip' })
+          }
         } else if (nearIdx === null && lastNearIdx !== null) {
           const dwell = Date.now() - (approachTime ?? 0)
-          if (dwell >= MIN_DWELL_MS) {
+          const holeScores = scoresRef.current[lastNearIdx] ?? []
+          const activePlayers = setupRef.current.players.filter(p => p.name.trim())
+          const alreadyScored = activePlayers.every((_, pi) => holeScores[pi] !== null)
+          if (dwell >= MIN_DWELL_MS && !alreadyScored) {
             addLog('EXIT', { hole: lastNearIdx, lat: +lat.toFixed(5), lng: +lng.toFixed(5), dwellMs: dwell })
             startListeningRef.current?.(lastNearIdx)
           } else {
-            addLog('EXIT_SKIP', { hole: lastNearIdx, dwellMs: dwell })
+            addLog('EXIT_SKIP', { hole: lastNearIdx, dwellMs: dwell, reason: alreadyScored ? 'scored' : 'dwell' })
           }
           lastNearIdx = null
           approachTime = null
@@ -452,7 +463,7 @@ export default function App() {
         <button className="sc-setup" onClick={() => setShowLog(v => !v)}>Log</button>
         <button className="sc-done" onClick={() => { captureScorecard(); setPhase('finished') }}>Done</button>
         <button className="sc-back" onClick={() => { localStorage.removeItem(SETUP_KEY); setSetup(DEFAULT_SETUP()); setPhase('setup') }}>Setup</button>
-        <span className="version-tag">v1.62</span>
+        <span className="version-tag">v1.63</span>
       </div>
 
       {voiceMsg && <div className={`voice-banner ${voiceMsg.startsWith('✓') ? 'confirm' : 'listening'}`}>{voiceMsg}</div>}
