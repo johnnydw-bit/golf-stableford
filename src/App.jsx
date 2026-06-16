@@ -177,7 +177,7 @@ export default function App() {
       rec.start()
       addLog('STT_START', { hole: holeIdx ?? currentHoleRef.current })
       setVoiceMsg('🎤 listening…')
-    }, 600)
+    }, 1500)
   }, [addLog])
 
   useEffect(() => { applyTranscriptRef.current = applyTranscript }, [applyTranscript])
@@ -379,7 +379,7 @@ export default function App() {
         <button className="sc-setup" onClick={() => setShowLog(v => !v)}>Log</button>
         <button className="sc-done" onClick={() => { setPhase('finished') }}>Done</button>
         <button className="sc-back" onClick={() => { localStorage.removeItem(SETUP_KEY); setSetup(DEFAULT_SETUP()); setPhase('setup') }}>Setup</button>
-        <span className="version-tag">v1.57</span>
+        <span className="version-tag">v1.58</span>
       </div>
 
       {voiceMsg && <div className={`voice-banner ${voiceMsg.startsWith('✓') ? 'confirm' : 'listening'}`}>{voiceMsg}</div>}
