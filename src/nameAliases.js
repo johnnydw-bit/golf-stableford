@@ -34,7 +34,7 @@ const NAME_ALIASES = {
   // Carl / Carlo
   'call':'carl','curl':'carl','car':'carl','karl':'carl','carlo':'carl',
   // Charles / Charlie / Chuck / Chas
-  'sharls':'charles','charls':'charles','charlie':'charles','sharly':'charles','shuck':'charles','chills':'charles','jarles':'charles','sharpless':'charles','chuck':'charles','chas':'charles',
+  'sharls':'charles','charls':'charles','charlie':'charles','sharly':'charles','shuck':'charles','chills':'charles','jarles':'charles','sharpless':'charles','chuck':'charles','chapter':'charles','chas':'charles',
   // Christopher / Chris / Topher / Kit
   'kristopher':'christopher','chriss':'christopher','krish':'christopher','kiss':'christopher','crisp':'christopher','christ':'christopher','chris':'christopher','topher':'christopher','kit':'christopher',
   // Clive
