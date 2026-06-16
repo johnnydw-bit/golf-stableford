@@ -183,10 +183,12 @@ export default function App() {
   useEffect(() => { applyTranscriptRef.current = applyTranscript }, [applyTranscript])
   useEffect(() => { startListeningRef.current = startListening }, [startListening])
 
-  // GPS — hole switching on approach, vibrate + STT on exit
+  // GPS — hole switching on approach, vibrate + STT on exit (min 20s dwell to avoid walk-through)
   useEffect(() => {
     if (!navigator.geolocation) return
     let lastNearIdx = null
+    let approachTime = null
+    const MIN_DWELL_MS = 20000
     const watchId = navigator.geolocation.watchPosition(
       pos => {
         const { latitude: lat, longitude: lng } = pos.coords
@@ -195,10 +197,17 @@ export default function App() {
           setCurrentHole(nearIdx)
           addLog('APPROACH', { hole: nearIdx, lat: +lat.toFixed(5), lng: +lng.toFixed(5) })
           lastNearIdx = nearIdx
+          approachTime = Date.now()
         } else if (nearIdx === null && lastNearIdx !== null) {
-          addLog('EXIT', { hole: lastNearIdx, lat: +lat.toFixed(5), lng: +lng.toFixed(5) })
-          startListeningRef.current?.(lastNearIdx)
+          const dwell = Date.now() - (approachTime ?? 0)
+          if (dwell >= MIN_DWELL_MS) {
+            addLog('EXIT', { hole: lastNearIdx, lat: +lat.toFixed(5), lng: +lng.toFixed(5), dwellMs: dwell })
+            startListeningRef.current?.(lastNearIdx)
+          } else {
+            addLog('EXIT_SKIP', { hole: lastNearIdx, dwellMs: dwell })
+          }
           lastNearIdx = null
+          approachTime = null
         }
       },
       (err) => addLog('GPS_ERR', { code: err.code, msg: err.message }),
@@ -443,7 +452,7 @@ export default function App() {
         <button className="sc-setup" onClick={() => setShowLog(v => !v)}>Log</button>
         <button className="sc-done" onClick={() => { captureScorecard(); setPhase('finished') }}>Done</button>
         <button className="sc-back" onClick={() => { localStorage.removeItem(SETUP_KEY); setSetup(DEFAULT_SETUP()); setPhase('setup') }}>Setup</button>
-        <span className="version-tag">v1.61</span>
+        <span className="version-tag">v1.62</span>
       </div>
 
       {voiceMsg && <div className={`voice-banner ${voiceMsg.startsWith('✓') ? 'confirm' : 'listening'}`}>{voiceMsg}</div>}
