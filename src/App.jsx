@@ -158,12 +158,11 @@ export default function App() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SR) return
     navigator.vibrate?.(500)
+    setVoiceMsg('🎤 …')
     const utterance = new SpeechSynthesisUtterance('Enter scores')
     utterance.lang = 'en-GB'
     utterance.rate = 1.2
-    speechSynthesis.speak(utterance)
-    setVoiceMsg('🎤 …')
-    setTimeout(() => {
+    utterance.onend = () => setTimeout(() => {
       const rec = new SR()
       rec.lang = 'en-GB'
       rec.continuous = false
@@ -177,7 +176,8 @@ export default function App() {
       rec.start()
       addLog('STT_START', { hole: holeIdx ?? currentHoleRef.current })
       setVoiceMsg('🎤 listening…')
-    }, 1500)
+    }, 300)
+    speechSynthesis.speak(utterance)
   }, [addLog])
 
   useEffect(() => { applyTranscriptRef.current = applyTranscript }, [applyTranscript])
@@ -379,7 +379,7 @@ export default function App() {
         <button className="sc-setup" onClick={() => setShowLog(v => !v)}>Log</button>
         <button className="sc-done" onClick={() => { setPhase('finished') }}>Done</button>
         <button className="sc-back" onClick={() => { localStorage.removeItem(SETUP_KEY); setSetup(DEFAULT_SETUP()); setPhase('setup') }}>Setup</button>
-        <span className="version-tag">v1.58</span>
+        <span className="version-tag">v1.59</span>
       </div>
 
       {voiceMsg && <div className={`voice-banner ${voiceMsg.startsWith('✓') ? 'confirm' : 'listening'}`}>{voiceMsg}</div>}
