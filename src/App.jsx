@@ -158,6 +158,10 @@ export default function App() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SR) return
     navigator.vibrate?.(500)
+    const utterance = new SpeechSynthesisUtterance('Enter scores')
+    utterance.lang = 'en-GB'
+    utterance.rate = 1.2
+    speechSynthesis.speak(utterance)
     setVoiceMsg('🎤 …')
     setTimeout(() => {
       const rec = new SR()
@@ -375,7 +379,7 @@ export default function App() {
         <button className="sc-setup" onClick={() => setShowLog(v => !v)}>Log</button>
         <button className="sc-done" onClick={() => { setPhase('finished') }}>Done</button>
         <button className="sc-back" onClick={() => { localStorage.removeItem(SETUP_KEY); setSetup(DEFAULT_SETUP()); setPhase('setup') }}>Setup</button>
-        <span className="version-tag">v1.56</span>
+        <span className="version-tag">v1.57</span>
       </div>
 
       {voiceMsg && <div className={`voice-banner ${voiceMsg.startsWith('✓') ? 'confirm' : 'listening'}`}>{voiceMsg}</div>}
