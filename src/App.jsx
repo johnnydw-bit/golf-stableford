@@ -77,8 +77,6 @@ export default function App() {
 
   useEffect(() => { currentHoleRef.current = currentHole }, [currentHole])
   useEffect(() => { setupRef.current = setup }, [setup])
-  useEffect(() => { applyTranscriptRef.current = applyTranscript }, [applyTranscript])
-  useEffect(() => { startListeningRef.current = startListening }, [startListening])
 
   const addLog = useCallback((event, data = {}) => {
     const entry = { ts: ts(), event, ...data }
@@ -174,6 +172,9 @@ export default function App() {
     addLog('STT_START', { hole: holeIdx ?? currentHoleRef.current })
     setVoiceMsg('🎤 listening…')
   }, [addLog])
+
+  useEffect(() => { applyTranscriptRef.current = applyTranscript }, [applyTranscript])
+  useEffect(() => { startListeningRef.current = startListening }, [startListening])
 
   // GPS — hole switching on approach, vibrate + STT on exit
   useEffect(() => {
@@ -371,7 +372,7 @@ export default function App() {
         <button className="sc-setup" onClick={() => setShowLog(v => !v)}>Log</button>
         <button className="sc-done" onClick={() => { setPhase('finished') }}>Done</button>
         <button className="sc-back" onClick={() => { localStorage.removeItem(SETUP_KEY); setSetup(DEFAULT_SETUP()); setPhase('setup') }}>Setup</button>
-        <span className="version-tag">v1.54</span>
+        <span className="version-tag">v1.55</span>
       </div>
 
       {voiceMsg && <div className={`voice-banner ${voiceMsg.startsWith('✓') ? 'confirm' : 'listening'}`}>{voiceMsg}</div>}
