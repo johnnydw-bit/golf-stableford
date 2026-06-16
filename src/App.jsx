@@ -67,15 +67,18 @@ export default function App() {
   const [gpsLog, setGpsLog]         = useState(() => load(GPS_LOG_KEY) ?? [])
   const [showLog, setShowLog]       = useState(false)
 
-  const currentHoleRef   = useRef(0)
-  const wakeLockRef      = useRef(null)
-  const lastScoreRef     = useRef(null)
-  const lastScoreTimeRef = useRef(0)
-  const setupRef         = useRef(setup)
-  const pollRef          = useRef(null)
+  const currentHoleRef      = useRef(0)
+  const wakeLockRef         = useRef(null)
+  const lastScoreRef        = useRef(null)
+  const lastScoreTimeRef    = useRef(0)
+  const setupRef            = useRef(setup)
+  const applyTranscriptRef  = useRef(null)
+  const startListeningRef   = useRef(null)
 
   useEffect(() => { currentHoleRef.current = currentHole }, [currentHole])
   useEffect(() => { setupRef.current = setup }, [setup])
+  useEffect(() => { applyTranscriptRef.current = applyTranscript }, [applyTranscript])
+  useEffect(() => { startListeningRef.current = startListening }, [startListening])
 
   const addLog = useCallback((event, data = {}) => {
     const entry = { ts: ts(), event, ...data }
@@ -139,7 +142,7 @@ export default function App() {
 
     const result = confirmed.length ? `✓ ${confirmed.join(' · ')}` : '? not recognised'
     setVoiceMsg(result)
-    addLog('TASKER', { hole: currentHoleRef.current, transcript, scores: confirmed.join(' · ') || 'none' })
+    addLog('STT', { hole: currentHoleRef.current, transcript, scores: confirmed.join(' · ') || 'none' })
   }, [setPlayerScore, addLog])
 
   // Wake lock
@@ -153,27 +156,26 @@ export default function App() {
     return () => { document.removeEventListener('visibilitychange', reacquire); wakeLockRef.current?.release() }
   }, [])
 
-  // Simulate Tasker: one-shot listen then POST to relay
-  const simulateTasker = useCallback(() => {
+  const startListening = useCallback((holeIdx) => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SR) return
+    navigator.vibrate?.(500)
     const rec = new SR()
-    rec.lang = 'en-US'
+    rec.lang = 'en-GB'
     rec.continuous = false
     rec.interimResults = false
     rec.maxAlternatives = 3
-    rec.onresult = async (e) => {
+    rec.onresult = (e) => {
       const transcript = e.results[0][0].transcript
-      await fetch('/api/voice-relay', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transcript }),
-      })
+      applyTranscriptRef.current?.(transcript)
     }
+    rec.onerror = (err) => addLog('STT_ERR', { hole: holeIdx ?? currentHoleRef.current, error: err.error })
     rec.start()
-  }, [])
+    addLog('STT_START', { hole: holeIdx ?? currentHoleRef.current })
+    setVoiceMsg('🎤 listening…')
+  }, [addLog])
 
-  // GPS — hole switching + notification on green exit (triggers Tasker voice task)
+  // GPS — hole switching on approach, vibrate + STT on exit
   useEffect(() => {
     if (!navigator.geolocation) return
     let lastNearIdx = null
@@ -187,16 +189,7 @@ export default function App() {
           lastNearIdx = nearIdx
         } else if (nearIdx === null && lastNearIdx !== null) {
           addLog('EXIT', { hole: lastNearIdx, lat: +lat.toFixed(5), lng: +lng.toFixed(5) })
-          if (Notification.permission === 'granted') {
-            new Notification(`⛳ Hole ${lastNearIdx + 1} — speak scores`, {
-              body: 'Say each player name and score',
-              tag: 'golf-score',
-              silent: true,
-            })
-            addLog('NOTIFY', { hole: lastNearIdx })
-          } else {
-            addLog('NOTIFY_BLOCKED', { hole: lastNearIdx, permission: Notification.permission })
-          }
+          startListeningRef.current?.(lastNearIdx)
           lastNearIdx = null
         }
       },
@@ -205,18 +198,6 @@ export default function App() {
     )
     return () => navigator.geolocation.clearWatch(watchId)
   }, [addLog])
-
-  // Poll relay endpoint every second
-  useEffect(() => {
-    pollRef.current = setInterval(async () => {
-      try {
-        const res = await fetch('/api/voice-relay')
-        const data = await res.json()
-        if (data.transcript) applyTranscript(data.transcript)
-      } catch {}
-    }, 1000)
-    return () => clearInterval(pollRef.current)
-  }, [applyTranscript])
 
   // BT clicker — next hole only (Tasker handles scoring)
   useEffect(() => {
@@ -307,8 +288,6 @@ export default function App() {
         </table>
 
         <button className="start-btn" onClick={() => {
-          if ('Notification' in window && Notification.permission === 'default')
-            Notification.requestPermission()
           save(SETUP_KEY, setup)
           const fresh = EMPTY_SCORES()
           setScores(fresh); save(SCORES_KEY, fresh)
@@ -388,12 +367,11 @@ export default function App() {
           <span>{currentHole + 1}</span>
           <button onPointerDown={() => setCurrentHole(h => (h + 1) % 18)}>›</button>
         </div>
-        <span className="relay-dot" title="Tasker relay active" />
-        <button className="sc-setup" onClick={simulateTasker}>Test</button>
+        <button className="sc-setup" onClick={() => startListening()}>Test</button>
         <button className="sc-setup" onClick={() => setShowLog(v => !v)}>Log</button>
         <button className="sc-done" onClick={() => { setPhase('finished') }}>Done</button>
         <button className="sc-back" onClick={() => { localStorage.removeItem(SETUP_KEY); setSetup(DEFAULT_SETUP()); setPhase('setup') }}>Setup</button>
-        <span className="version-tag">v1.53</span>
+        <span className="version-tag">v1.54</span>
       </div>
 
       {voiceMsg && <div className={`voice-banner ${voiceMsg.startsWith('✓') ? 'confirm' : 'listening'}`}>{voiceMsg}</div>}
