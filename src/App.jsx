@@ -190,9 +190,14 @@ export default function App() {
     if (!navigator.geolocation) return
     let lastNearIdx = null
     let approachTime = null
+    let lastFixTime = 0
     const MIN_DWELL_MS = 20000
+    const FIX_INTERVAL_MS = 5000
     const watchId = navigator.geolocation.watchPosition(
       pos => {
+        const now = Date.now()
+        if (now - lastFixTime < FIX_INTERVAL_MS) return
+        lastFixTime = now
         const { latitude: lat, longitude: lng } = pos.coords
         const nearIdx = nearestGreen(lat, lng, 30)
         if (nearIdx !== null && nearIdx !== lastNearIdx) {
@@ -463,7 +468,7 @@ export default function App() {
         <button className="sc-setup" onClick={() => setShowLog(v => !v)}>Log</button>
         <button className="sc-done" onClick={() => { captureScorecard(); setPhase('finished') }}>Done</button>
         <button className="sc-back" onClick={() => { localStorage.removeItem(SETUP_KEY); setSetup(DEFAULT_SETUP()); setPhase('setup') }}>Setup</button>
-        <span className="version-tag">v1.63</span>
+        <span className="version-tag">v1.64</span>
       </div>
 
       {voiceMsg && <div className={`voice-banner ${voiceMsg.startsWith('✓') ? 'confirm' : 'listening'}`}>{voiceMsg}</div>}
